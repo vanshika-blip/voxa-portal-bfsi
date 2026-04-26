@@ -77,13 +77,38 @@ html,body{margin:0;padding:0;background:var(--bg);font-family:var(--fb);-webkit-
 .t-tbl .nm-sub{font-family:var(--fm);font-size:10px;color:var(--muted);margin-top:1px}
 .t-cell-wrap{max-width:200px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.4;word-break:break-word}
 .t-mono{font-family:var(--fm);font-size:11px}
-.t-tbl tr.filter-row td{padding:2px 4px;background:#f8f8f8;border-bottom:1.5px solid var(--border)}
 .t-tbl tr.selected td{background:#f0f0ff !important}
 
-/* ── EXCEL-STYLE COLUMN FILTER ── */
-.simple-col-filter{width:100%;padding:2px 18px 2px 5px;border:1px solid #ddd;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23666'/%3E%3C/svg%3E") no-repeat right 4px center;background-size:7px 5px;-webkit-appearance:none;appearance:none;font-size:10px;font-family:var(--fb);color:var(--black);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:2px;transition:border-color .1s}
-.simple-col-filter:focus{outline:none;border-color:var(--black)}
-.simple-col-filter.has-filter{background-color:#e8f0fe;border-color:var(--blue);color:var(--blue)}
+/* ── MULTI-SELECT COLUMN FILTER ── */
+.col-filter-wrap{position:relative;display:inline-block}
+.col-filter-btn{display:inline-flex;align-items:center;gap:4px;background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:2px;transition:background .1s;color:var(--muted)}
+.col-filter-btn:hover{background:rgba(0,0,0,.06)}
+.col-filter-btn.active{color:var(--blue)}
+.col-filter-icon{width:13px;height:13px;flex-shrink:0}
+.col-filter-badge{background:var(--blue);color:#fff;font-size:8px;font-family:var(--fd);font-weight:900;padding:1px 4px;border-radius:10px;min-width:14px;text-align:center;line-height:1.4}
+
+.col-filter-dropdown{position:fixed;background:#fff;border:2px solid var(--black);box-shadow:4px 4px 0 rgba(0,0,0,.18);z-index:9999;min-width:220px;max-width:280px}
+.col-filter-search{padding:7px 8px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;gap:6px}
+.col-filter-search input{flex:1;border:none;outline:none;font-size:11px;font-family:var(--fb);color:var(--black);background:transparent}
+.col-filter-search input::placeholder{color:#bbb}
+.col-filter-actions{display:flex;gap:0;border-bottom:1px solid var(--border)}
+.col-filter-action-btn{flex:1;padding:5px 8px;font-size:9px;font-family:var(--fd);font-weight:700;letter-spacing:.1em;text-transform:uppercase;background:none;border:none;cursor:pointer;color:var(--muted);transition:all .1s}
+.col-filter-action-btn:hover{background:#f5f5f5;color:var(--black)}
+.col-filter-action-btn:first-child{border-right:1px solid var(--border)}
+.col-filter-list{max-height:200px;overflow-y:auto}
+.col-filter-item{display:flex;align-items:center;gap:8px;padding:6px 10px;cursor:pointer;font-size:11px;font-family:var(--fb);border-bottom:1px solid #f5f5f5;transition:background .08s}
+.col-filter-item:hover{background:#f7f7ff}
+.col-filter-item.checked{background:#f0f5ff}
+.col-filter-item input[type=checkbox]{width:13px;height:13px;accent-color:var(--blue);flex-shrink:0;cursor:pointer}
+.col-filter-item-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--black)}
+.col-filter-item-label.blank{color:#bbb;font-style:italic}
+.col-filter-footer{padding:7px 10px;border-top:1.5px solid var(--border);display:flex;justify-content:flex-end;gap:6px}
+.col-filter-apply{padding:5px 14px;font-size:9px;font-family:var(--fd);font-weight:900;letter-spacing:.1em;text-transform:uppercase;background:var(--black);color:#fff;border:none;cursor:pointer;transition:background .1s}
+.col-filter-apply:hover{background:#333}
+.col-filter-empty{padding:20px;text-align:center;font-size:11px;color:var(--muted);font-family:var(--fd);font-weight:700}
+
+/* Active filter indicator in th */
+.th-filter-wrap{display:flex;align-items:center;gap:4px;white-space:nowrap}
 
 /* ── TEAM BREAKDOWN ── */
 .team-breakdown-grid{display:grid;gap:16px;padding:16px 20px}
@@ -341,7 +366,7 @@ input[type=checkbox]{accent-color:var(--black);cursor:pointer}
 .status-bd-bar{height:3px;background:#eee;margin-top:6px;border-radius:2px}
 .status-bd-bar-fill{height:100%;border-radius:2px}
 
-/* ── MAST SELECT — white bg black text ── */
+/* ── MAST SELECT ── */
 .mast-select{padding:6px 10px;border:1.5px solid rgba(255,255,255,.3);font-size:12px;font-family:var(--fb);background:#fff;color:#000;cursor:pointer;border-radius:2px}
 .mast-select:focus{outline:none;border-color:#fff}
 .mast-select option{background:#fff;color:#000}
@@ -354,6 +379,15 @@ input[type=checkbox]{accent-color:var(--black);cursor:pointer}
 .usage-team-kpi:last-child{border-right:none}
 .usage-team-kpi-v{font-family:var(--fd);font-weight:900;font-size:20px}
 .usage-team-kpi-l{font-family:var(--fd);font-weight:700;font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+
+/* ── ACTIVE FILTERS BAR ── */
+.active-filters-bar{padding:6px 14px;background:#f0f5ff;border-bottom:1.5px solid #c7d7f5;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.active-filter-chip{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;background:#fff;border:1.5px solid var(--blue);border-radius:3px;font-size:10px;font-family:var(--fb);color:var(--blue)}
+.active-filter-chip-label{font-weight:600;font-size:9px;font-family:var(--fd);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-right:2px}
+.active-filter-chip-rm{background:none;border:none;color:#93c5fd;cursor:pointer;font-size:14px;line-height:1;padding:0;display:flex;align-items:center}
+.active-filter-chip-rm:hover{color:var(--blue)}
+.clear-all-filters{margin-left:auto;font-size:9px;font-family:var(--fd);font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--blue);background:none;border:none;cursor:pointer;padding:3px 6px}
+.clear-all-filters:hover{text-decoration:underline}
 </style>
 </head>
 <body>
@@ -387,9 +421,8 @@ async function api(action, payload={}, cacheMs=0) {
 // ── Client-side lead cache (per agent, 5 min TTL) ──
 const _leadCache = {};
 async function fetchLeadsWithCache(agentCode, filter) {
-  // Only cache when no active filters beyond agentCode
   const hasFilter = filter && (filter.search || filter.unassignedOnly || filter.requestId);
-  if (!hasFilter) {
+  if (!hasFilter && agentCode) {
     const key = agentCode;
     const now = Date.now();
     if (_leadCache[key] && (now - _leadCache[key].ts) < 5 * 60 * 1000) {
@@ -399,7 +432,7 @@ async function fetchLeadsWithCache(agentCode, filter) {
     if (r.ok) _leadCache[key] = { data: r, ts: now };
     return r;
   }
-  return await api("getLeads", { agentCode, filter });
+  return await api("getLeads", { agentCode: agentCode || "", filter: filter || {} });
 }
 function invalidateLeadCache(agentCode) {
   if (agentCode) delete _leadCache[agentCode];
@@ -496,136 +529,145 @@ function DateCell({ value }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// REMARKS MODAL
+// MULTI-SELECT COLUMN FILTER (replaces ExcelColFilter)
 // ─────────────────────────────────────────────────────────────
-function RemarksModal({ name, value, onSave, onClose }) {
-  const [text, setText] = useState(value || "");
-  return (
-    <div className="t-modal-bg" onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
-      <div className="t-modal t-fade" style={{maxWidth:400}}>
-        <div className="t-modal-hd">
-          <span style={{textTransform:"none",letterSpacing:0,fontSize:14}}>{name || "Add Comment"}</span>
-          <button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:20,lineHeight:1}}>×</button>
-        </div>
-        <div className="t-modal-body">
-          <textarea className="t-input" rows={5} value={text} onChange={e=>setText(e.target.value)} placeholder="Add Comment" autoFocus style={{resize:"vertical",fontSize:13,lineHeight:1.6,fontFamily:"var(--fb)"}}/>
-        </div>
-        <div className="t-modal-footer">
-          <button onClick={onClose} className="t-btn t-btn-outline">Cancel</button>
-          <button onClick={()=>{onSave(text); onClose();}} className="t-btn t-btn-black" disabled={text===value}>Save</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RemarksCell({ name, value, onSave, readOnly }) {
+function MultiSelectColFilter({ header, values, selected, onChange }) {
   const [open, setOpen] = useState(false);
-  const hasValue = !!String(value||"").trim();
-  const cls = "remark-cell" + (hasValue?" has-value":"") + (readOnly?" read-only":"");
+  const [search, setSearch] = useState("");
+  // pending = local state while dropdown open; committed on Apply
+  const [pending, setPending] = useState(selected || []);
+  const btnRef = useRef(null);
+  const dropRef = useRef(null);
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
+
+  const allVals = useMemo(() => {
+    const uniq = [...new Set(values.map(v => String(v || "")))].sort((a,b) => {
+      if (!a) return 1; if (!b) return -1;
+      return a.localeCompare(b);
+    });
+    return uniq;
+  }, [values]);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return allVals;
+    const s = search.toLowerCase();
+    return allVals.filter(v => v.toLowerCase().includes(s));
+  }, [allVals, search]);
+
+  const isActive = selected && selected.length > 0;
+
+  function openDropdown() {
+    setPending(selected || []);
+    setSearch("");
+    // position below button
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setDropPos({ top: rect.bottom + window.scrollY + 2, left: rect.left + window.scrollX });
+    }
+    setOpen(true);
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    function handler(e) {
+      if (dropRef.current && !dropRef.current.contains(e.target) && btnRef.current && !btnRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  function toggleVal(v) {
+    setPending(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
+  }
+  function selectAll() { setPending(allVals); }
+  function clearAll() { setPending([]); }
+  function apply() {
+    onChange(pending.length > 0 ? pending : null);
+    setOpen(false);
+  }
+
+  const displayCount = selected ? selected.length : 0;
+
   return (
-    <>
-      <div className={cls} onClick={()=>{ if(!readOnly) setOpen(true); }} title={hasValue ? value : "Add comment"}>
-        <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke={hasValue?"#0066b3":"#bbb"} strokeWidth="1.5" style={{flexShrink:0}}>
-          <path d="M2 2h10v8H8l-3 2V10H2V2z" strokeLinejoin="round"/>
+    <div className="col-filter-wrap" style={{display:"inline-flex",alignItems:"center"}}>
+      <button
+        ref={btnRef}
+        className={"col-filter-btn" + (isActive ? " active" : "")}
+        onClick={openDropdown}
+        title={isActive ? `${displayCount} filter${displayCount>1?"s":""} active` : `Filter ${header}`}
+      >
+        <svg className="col-filter-icon" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <path d="M1 3h12M3 7h8M5 11h4" strokeLinecap="round"/>
         </svg>
-        <span className="remark-cell-text" style={{color:hasValue?"#333":"#bbb"}}>
-          {hasValue ? value : (readOnly ? "—" : "Add comment")}
-        </span>
-        {!readOnly && !hasValue && <svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="#ccc" strokeWidth="1.5" style={{flexShrink:0}}><path d="M4.5 1v7M1 4.5h7"/></svg>}
-      </div>
-      {open && <RemarksModal name={name || "Comment"} value={value} onSave={v => { onSave && onSave(v); }} onClose={()=>setOpen(false)}/>}
-    </>
-  );
-}
-
-function AssignCell({ lead, recruiters, onAssign, busy }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-  const currentEmail = String(lead["Assigned To Email"] || "").toLowerCase();
-  const currentRecruiter = recruiters.find(r => r.email.toLowerCase() === currentEmail);
-  const currentName = currentRecruiter ? (currentRecruiter.name || currentRecruiter.email.split("@")[0]) : "";
-  useEffect(()=>{
-    function handler(e){ if(ref.current && !ref.current.contains(e.target)) setOpen(false); }
-    if(open) document.addEventListener("mousedown", handler);
-    return ()=> document.removeEventListener("mousedown", handler);
-  },[open]);
-  return (
-    <div className="assign-cell-wrap" ref={ref}>
-      <button className={"assign-cell-btn" + (currentName?" assigned":" unassigned")} onClick={()=>!busy&&setOpen(!open)} disabled={busy}>
-        {currentName ? (<><svg width="10" height="10" viewBox="0 0 10 10" fill="var(--green)"><path d="M1 5l3 3 5-5" stroke="var(--green)" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>{currentName}</>) : (<><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--muted)" strokeWidth="1.5"><circle cx="5" cy="3.5" r="2"/><path d="M1 9c0-2.2 1.8-4 4-4s4 1.8 4 4"/></svg>Assign…</>)}
-        <svg width="7" height="7" viewBox="0 0 7 7" fill="none" stroke="currentColor" strokeWidth="1.5" style={{marginLeft:2}}><path d="M1 2l2.5 2.5L6 2"/></svg>
+        {isActive && <span className="col-filter-badge">{displayCount}</span>}
       </button>
-      {open && (
-        <div className="assign-dropdown">
-          {recruiters.map(r=>{
-            const isSelected = r.email.toLowerCase() === currentEmail;
-            return (
-              <div key={r.email} className="assign-dropdown-item" onClick={()=>{ onAssign(lead, r.email); setOpen(false); }} style={isSelected?{background:"#f0fff7",color:"var(--green)",fontWeight:600}:{}}>
-                {isSelected && "✓ "}{r.name || r.email.split("@")[0]}
-                <div style={{fontSize:9,color:"var(--muted)",fontFamily:"var(--fm)"}}>{r.email}</div>
-              </div>
-            );
-          })}
-        </div>
+
+      {open && typeof document !== "undefined" && React.createPortal(
+        <div
+          ref={dropRef}
+          className="col-filter-dropdown t-fade"
+          style={{ position:"absolute", top: dropPos.top, left: dropPos.left, zIndex:99999 }}
+        >
+          {/* Search */}
+          <div className="col-filter-search">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#bbb" strokeWidth="1.5">
+              <circle cx="5" cy="5" r="3.5"/><path d="M8 8l2.5 2.5" strokeLinecap="round"/>
+            </svg>
+            <input
+              autoFocus
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder={`Search ${header}…`}
+              onKeyDown={e => { if (e.key === "Enter") { if (filtered.length > 0) toggleVal(filtered[0]); } if (e.key === "Escape") setOpen(false); }}
+            />
+            {search && <button onClick={() => setSearch("")} style={{background:"none",border:"none",color:"#bbb",cursor:"pointer",padding:0,fontSize:14,lineHeight:1}}>×</button>}
+          </div>
+
+          {/* Select All / Clear */}
+          <div className="col-filter-actions">
+            <button className="col-filter-action-btn" onClick={selectAll}>Select All</button>
+            <button className="col-filter-action-btn" onClick={clearAll}>Clear</button>
+          </div>
+
+          {/* Options list */}
+          <div className="col-filter-list">
+            {filtered.length === 0 ? (
+              <div className="col-filter-empty">No matches</div>
+            ) : filtered.map(v => {
+              const isChecked = pending.includes(v);
+              return (
+                <label key={v} className={"col-filter-item" + (isChecked ? " checked" : "")}>
+                  <input type="checkbox" checked={isChecked} onChange={() => toggleVal(v)}/>
+                  <span className={"col-filter-item-label" + (!v ? " blank" : "")}>{v || "(blank)"}</span>
+                </label>
+              );
+            })}
+          </div>
+
+          {/* Footer */}
+          <div className="col-filter-footer">
+            <button className="col-filter-action-btn" style={{border:"1.5px solid var(--border)",borderRadius:2,padding:"4px 10px"}} onClick={() => setOpen(false)}>Cancel</button>
+            <button className="col-filter-apply" onClick={apply}>
+              Apply {pending.length > 0 ? `(${pending.length})` : ""}
+            </button>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
 }
 
-function StatusSelect({ options, value, onChange }) {
-  const colorCls = getStatusColorCls(value);
-  return (
-    <select className={"status-sel " + colorCls} value={value || ""} onChange={e=>onChange(e.target.value)}>
-      <option value="">— select —</option>
-      {options.map(o=><option key={o} value={o}>{o}</option>)}
-    </select>
-  );
-}
-
-const CALL_STATUS_OPTIONS = ["Connected","DNP-1","DNP-2","DNP-3","DNP-4","DNP-5","Hiring On hold","Irrelevant"];
-const FEEDBACK_OPTIONS = ["Duplicate / R1 Reject / DNP","Not interested / Not looking for job change","Location issue / Looking for specific city","Out of budget / High salary expectation","Low experience / Fresher","Overaged / Not eligible","Previously Evaluated","Communication gap","Not working currently / Career gap","Currently working – not open to move","Wrong number / Not connected","Other constraint","Relevant but looking for senior role","Not reachable / Call back later","Call back scheduled","CV Awaited / Shared","Interested: Interview Lined up","Interview: Done","Already in process / Selected","Currently Working in same company"];
-const SELECTION_OPTIONS = ["FB Pending","Backout","Offer Backout","Duplicate","Process","Reject","TL Reject","Position on hold","Position Closed","Interview Reject","Telephonic","VC","F2F","Finals","Use Later","On Hold","Offered","Joined","Drop"];
-
-const NAV_ITEMS = [
-  { id:"dashboard", label:"Dashboard" },
-  { id:"leads",     label:"Leads" },
-  { id:"trigger",   label:"Trigger Campaign" },
-  { id:"campaigns", label:"Campaigns" },
-  { id:"agents",    label:"Agents", superOnly:true },
-  { id:"users",     label:"Users", hideFor:["recruiter"] },
-  { id:"teams",     label:"Teams", hideFor:["recruiter","team_lead"] },
-  { id:"usage",     label:"Usage", hideFor:["recruiter"] },
-];
-
-// ── Excel column filter — fixed to use controlled value properly ──
-function ExcelColFilter({ header, values, selected, onChange }) {
-  const allVals = useMemo(() => [...new Set(values.map(v=>String(v||"")))].sort((a,b)=>a.localeCompare(b)), [values]);
-  const curVal = (selected && selected.length === 1) ? selected[0] : "";
-  const hasFilter = Boolean(curVal);
-  return (
-    <select
-      className={"simple-col-filter"+(hasFilter?" has-filter":"")}
-      value={curVal}
-      onChange={e => { const v=e.target.value; onChange(v ? [v] : null); }}
-      title={header}
-    >
-      <option value="">All ▾</option>
-      {allVals.map(v=><option key={v} value={v}>{v||"(blank)"}</option>)}
-    </select>
-  );
-}
-
-// ── Table filter hook — fixed to apply filters correctly ──
+// ── Table filter hook ──
 function useTableFilters(data, headers) {
   const [filters, setFilters] = useState({});
-
-  // Reset filters when data/headers change significantly
   useEffect(() => { setFilters({}); }, [headers.join(",")]);
 
   const colValues = useMemo(() => {
     const m = {};
-    headers.forEach(h => { m[h] = data.map(row => String(row[h]??"")); });
+    headers.forEach(h => { m[h] = data.map(row => String(row[h] ?? "")); });
     return m;
   }, [data, headers]);
 
@@ -633,7 +675,7 @@ function useTableFilters(data, headers) {
     const activeFilters = Object.entries(filters).filter(([, vals]) => vals && vals.length > 0);
     if (activeFilters.length === 0) return data;
     return data.filter(row =>
-      activeFilters.every(([col, allowed]) => allowed.includes(String(row[col]??"")))
+      activeFilters.every(([col, allowed]) => allowed.includes(String(row[col] ?? "")))
     );
   }, [data, filters]);
 
@@ -646,8 +688,11 @@ function useTableFilters(data, headers) {
     });
   }
   function clearFilters() { setFilters({}); }
+  function clearColFilter(col) {
+    setFilters(f => { const n = {...f}; delete n[col]; return n; });
+  }
 
-  return { filters, filtered, colValues, setColFilter, clearFilters };
+  return { filters, filtered, colValues, setColFilter, clearFilters, clearColFilter };
 }
 
 function isDateCol(h) {
@@ -738,8 +783,19 @@ function SetupScreen({ token, onCompleted, goLogin }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// SHELL
+// NAV
 // ─────────────────────────────────────────────────────────────
+const NAV_ITEMS = [
+  { id:"dashboard", label:"Dashboard" },
+  { id:"leads",     label:"Leads" },
+  { id:"trigger",   label:"Trigger Campaign" },
+  { id:"campaigns", label:"Campaigns" },
+  { id:"agents",    label:"Agents", superOnly:true },
+  { id:"users",     label:"Users", hideFor:["recruiter"] },
+  { id:"teams",     label:"Teams", hideFor:["recruiter","team_lead"] },
+  { id:"usage",     label:"Usage", hideFor:["recruiter"] },
+];
+
 function Shell({ user, today, onLogout, view, setView, children, onChangePw }) {
   const visible = NAV_ITEMS.filter(n => {
     if(n.superOnly && user.role!=="super_admin") return false;
@@ -830,11 +886,36 @@ function AgentPicker({ agents, value, onChange, allowAll }) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// ACTIVE FILTERS BAR
+// ─────────────────────────────────────────────────────────────
+function ActiveFiltersBar({ filters, colLabelFn, onRemove, onClearAll }) {
+  const active = Object.entries(filters).filter(([,v]) => v && v.length > 0);
+  if (active.length === 0) return null;
+  return (
+    <div className="active-filters-bar">
+      <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="var(--blue)" strokeWidth="1.5" style={{flexShrink:0}}>
+        <path d="M1 3h12M3 7h8M5 11h4" strokeLinecap="round"/>
+      </svg>
+      <span style={{fontSize:9,fontFamily:"var(--fd)",fontWeight:700,letterSpacing:".12em",textTransform:"uppercase",color:"var(--blue)"}}>Filters:</span>
+      {active.map(([col, vals]) => (
+        <div key={col} className="active-filter-chip">
+          <span className="active-filter-chip-label">{colLabelFn ? colLabelFn(col) : col}</span>
+          <span style={{maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+            {vals.length === 1 ? (vals[0] || "(blank)") : `${vals.length} selected`}
+          </span>
+          <button className="active-filter-chip-rm" onClick={() => onRemove(col)}>×</button>
+        </div>
+      ))}
+      <button className="clear-all-filters" onClick={onClearAll}>Clear all</button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 // DASHBOARD
 // ─────────────────────────────────────────────────────────────
 function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
   const [data,setData]=useState(null); const [range,setRange]=useState("7d");
-
   async function load() {
     const r = await api("getDashboard",{range,agentCode:selectedAgent});
     if(r.ok) setData(r);
@@ -844,12 +925,8 @@ function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
     const t = setInterval(load, 5*60*1000);
     return ()=>clearInterval(t);
   },[range,selectedAgent]);
-
   if(!data) return <div style={{display:"flex",justifyContent:"center",padding:60}}><Spin/></div>;
   const s=data.stats||{};
-  const lineupCount = s.lineupCount || 0;
-  const cvAwaitedCount = s.cvAwaitedCount || 0;
-
   return (
     <div className="t-fade">
       <div className="t-mast">
@@ -888,8 +965,8 @@ function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
           {label:"Unassigned",value:s.unassignedLeads||0,color:"#e2001a"},
           {label:"Connected",value:s.connectedCount||0,color:"#0066b3"},
           {label:"Callbacks",value:s.callbackCount||0,color:"#ffc600"},
-          {label:"Lineups",value:lineupCount,color:"#009149",highlight:true},
-          {label:"CV Awaited",value:cvAwaitedCount,color:"#854d0e",highlight:"yellow"},
+          {label:"Lineups",value:s.lineupCount||0,color:"#009149",highlight:true},
+          {label:"CV Awaited",value:s.cvAwaitedCount||0,color:"#854d0e",highlight:"yellow"},
         ].map(k=>(
           <div key={k.label} className="t-kpi" style={k.highlight==="yellow"?{background:"#fefce8"}:k.highlight?{background:"#f0fff7"}:{}}>
             <div className="t-kpi-accent" style={{background:k.color}}/>
@@ -916,7 +993,6 @@ function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
           </div>
         </div>
       )}
-
       {user && (user.role==="admin"||user.role==="super_admin") && data.teamBreakdown && data.teamBreakdown.length>0 && (
         <div className="t-board">
           <div className="t-board-hd"><h2 className="t-board-hd-title">Team Breakdown</h2><span className="t-board-meta">{data.teamBreakdown.length} teams</span></div>
@@ -966,15 +1042,15 @@ function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// LEADS VIEW — with debounced search + client-side cache
+// LEADS VIEW — Fixed "All agents" + Multi-select filters
 // ─────────────────────────────────────────────────────────────
 function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter }) {
-  const [selAgent, setSelAgent] = useState(initialFilter?.agentCode || (agents[0]?.agentCode||""));
+  const [selAgent, setSelAgent] = useState(initialFilter?.agentCode || "");
   const [leads, setLeads] = useState([]);
   const [headers, setHeaders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchInput, setSearchInput] = useState("");
-  const search = useDebounce(searchInput, 300); // debounce search
+  const search = useDebounce(searchInput, 300);
   const [unassignedOnly, setUnassignedOnly] = useState(false);
   const [reqFilter, setReqFilter] = useState(initialFilter?.requestId || "");
   const [busy, setBusy] = useState(false);
@@ -984,7 +1060,6 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
   const [lastRefresh, setLastRefresh] = useState(null);
   const [selTeam, setSelTeam] = useState("");
 
-  // Team filter by member emails
   const teamFilterEmails = useMemo(() => {
     if (!selTeam) return null;
     const teamMembers = users.filter(u => u.teamId === selTeam || u.team === selTeam && (u.role === "recruiter" || u.role === "team_lead"));
@@ -993,26 +1068,19 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
 
   async function refresh() {
     setLoading(true);
-    if(!selAgent) {
-      // All agents — fetch all leads across visible agents
-      const r = await api("getLeads", { agentCode: "", filter: { search, unassignedOnly, requestId: reqFilter||undefined } });
-      setLoading(false);
-      if(r.ok){setLeads(r.leads||[]);setHeaders(r.headers||[]);setLastRefresh(new Date());}
-      return;
-    }
+    // FIX: For "All agents" (empty selAgent), pass empty string so backend fetches all visible agents
     const r = await fetchLeadsWithCache(selAgent, {
       search,
       unassignedOnly,
       requestId: reqFilter||undefined
     });
     setLoading(false);
-    if(r.ok){setLeads(r.leads||[]);setHeaders(r.headers||[]);setLastRefresh(new Date());}
+    if(r.ok){ setLeads(r.leads||[]); setHeaders(r.headers||[]); setLastRefresh(new Date()); }
   }
 
   useEffect(()=>{ refresh(); },[selAgent, search, unassignedOnly, reqFilter]);
   useEffect(()=>{
-    if(!selAgent) return;
-    const t = setInterval(()=>{ invalidateLeadCache(selAgent); refresh(); }, 5*60*1000);
+    const t = setInterval(()=>{ if(selAgent) invalidateLeadCache(selAgent); refresh(); }, 5*60*1000);
     return ()=>clearInterval(t);
   },[selAgent, search, unassignedOnly, reqFilter]);
 
@@ -1022,10 +1090,9 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
   const inCols = headers.filter(h=>h.startsWith("in."));
   const shownHeaders = [...fixedCols.filter(h=>headers.includes(h)), ...dateCols, ...outCols, ...inCols];
 
-  const { filters, filtered: rawFiltered, colValues, setColFilter, clearFilters } = useTableFilters(leads, shownHeaders);
-  const hasFilters = Object.keys(filters).length > 0;
+  const { filters, filtered: rawFiltered, colValues, setColFilter, clearFilters, clearColFilter } = useTableFilters(leads, shownHeaders);
+  const hasFilters = Object.keys(filters).filter(k => filters[k] && filters[k].length > 0).length > 0;
 
-  // Apply team filter on top of column filters
   const filteredLeads = useMemo(() => {
     let result = rawFiltered;
     if (teamFilterEmails) {
@@ -1054,28 +1121,35 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
 
   async function assign(lead, email) {
     setBusy(true);
-    await api("assignLead",{agentCode:selAgent,callId:lead["Call ID"],recruiterEmail:email});
-    invalidateLeadCache(selAgent);
+    await api("assignLead",{agentCode:selAgent||lead._agent||"",callId:lead["Call ID"],recruiterEmail:email});
+    invalidateLeadCache(selAgent||lead._agent||"");
     setBusy(false); refresh();
   }
   async function bulkAssign() {
     if(!bulkRecruiter||selected.size===0) return;
     setBulkBusy(true);
-    for(const callId of selected) { await api("assignLead",{agentCode:selAgent,callId,recruiterEmail:bulkRecruiter}); }
-    invalidateLeadCache(selAgent);
+    for(const callId of selected) {
+      const lead = leads.find(l => l["Call ID"] === callId);
+      const ac = selAgent || (lead && lead._agent) || "";
+      await api("assignLead",{agentCode:ac,callId,recruiterEmail:bulkRecruiter});
+      if (ac) invalidateLeadCache(ac);
+    }
     setBulkBusy(false); setSelected(new Set()); setBulkRecruiter(""); refresh();
   }
 
   async function handleCellChange(callId, field, value) {
-    // Optimistic update — instant UI response
     setLeads(prev => prev.map(l => l["Call ID"] === callId ? {...l, [field]: value} : l));
-    // Save in background
-    const r = await api("updateLead",{agentCode:selAgent,callId,fields:{[field]:value}});
-    if (!r.ok) {
-      // Revert on failure
-      invalidateLeadCache(selAgent);
-      refresh();
-    }
+    const lead = leads.find(l => l["Call ID"] === callId);
+    const ac = selAgent || (lead && lead._agent) || "";
+    const r = await api("updateLead",{agentCode:ac,callId,fields:{[field]:value}});
+    if (!r.ok) { invalidateLeadCache(ac); refresh(); }
+  }
+
+  function colLabel(h) {
+    if(h==="Recording URL") return "Recording";
+    if(h.startsWith("out.")) return h.slice(4);
+    if(h.startsWith("in.")) return "↓"+h.slice(3);
+    return h;
   }
 
   function renderCell(h, val, lead) {
@@ -1093,12 +1167,12 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
     return <span style={{fontSize:12}}>{strVal}</span>;
   }
 
-  function colLabel(h) {
-    if(h==="Recording URL") return "Recording";
-    if(h.startsWith("out.")) return h.slice(4);
-    if(h.startsWith("in.")) return "↓"+h.slice(3);
-    return h;
-  }
+  const CALL_STATUS_OPTIONS = ["Connected","DNP-1","DNP-2","DNP-3","DNP-4","DNP-5","Hiring On hold","Irrelevant"];
+  const FEEDBACK_OPTIONS = ["Duplicate / R1 Reject / DNP","Not interested / Not looking for job change","Location issue / Looking for specific city","Out of budget / High salary expectation","Low experience / Fresher","Overaged / Not eligible","Previously Evaluated","Communication gap","Not working currently / Career gap","Currently working – not open to move","Wrong number / Not connected","Other constraint","Relevant but looking for senior role","Not reachable / Call back later","Call back scheduled","CV Awaited / Shared","Interested: Interview Lined up","Interview: Done","Already in process / Selected","Currently Working in same company"];
+  const SELECTION_OPTIONS = ["FB Pending","Backout","Offer Backout","Duplicate","Process","Reject","TL Reject","Position on hold","Position Closed","Interview Reject","Telephonic","VC","F2F","Finals","Use Later","On Hold","Offered","Joined","Drop"];
+
+  const noLeadsYet = !loading && leads.length === 0;
+  const noFilteredLeads = !loading && leads.length > 0 && filteredLeads.length === 0;
 
   return (
     <div className="t-fade" style={{display:"flex",flexDirection:"column",minHeight:"calc(100vh - 48px)"}}>
@@ -1106,7 +1180,7 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
         <div>
           <div className="t-mast-title">Leads</div>
           <div className="t-mast-sub" style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-            <span>{filteredLeads.length} leads {hasFilters && `(filtered)`}</span>
+            <span>{filteredLeads.length} leads {hasFilters && `(filtered from ${leads.length})`}</span>
             <span className="refresh-badge"><span className="refresh-dot"/>Auto-refresh 5m</span>
             {lastRefresh && <span style={{fontSize:9,color:"rgba(255,255,255,.3)"}}>Last: {lastRefresh.toLocaleTimeString()}</span>}
             {reqFilter && <>
@@ -1116,7 +1190,6 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
           </div>
         </div>
         <div className="t-mast-r">
-          {/* Team filter — white bg */}
           {teams && teams.length>0 && (
             <select className="mast-select" value={selTeam} onChange={e=>setSelTeam(e.target.value)} style={{minWidth:130}}>
               <option value="">All Teams</option>
@@ -1131,15 +1204,22 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
               Unassigned
             </label>
           )}
-          {hasFilters && <button className="t-btn t-btn-sm" style={{background:"var(--yellow)",color:"var(--black)",border:"none"}} onClick={clearFilters}>Clear Filters ×</button>}
         </div>
       </div>
 
+      {/* Active filters bar */}
+      <ActiveFiltersBar
+        filters={filters}
+        colLabelFn={colLabel}
+        onRemove={clearColFilter}
+        onClearAll={clearFilters}
+      />
+
       <div style={{flex:1,background:"var(--white)"}}>
-        {false && <div className="t-empty">Pick an agent to view leads.</div>}
-        {selAgent && loading && <div style={{padding:60,textAlign:"center"}}><Spin/></div>}
-        {selAgent && !loading && filteredLeads.length===0 && <div className="t-empty">No leads found.</div>}
-        {selAgent && !loading && leads.length>0 && (
+        {loading && <div style={{padding:60,textAlign:"center"}}><Spin/></div>}
+        {noLeadsYet && <div className="t-empty">No leads found{selAgent ? " for this agent" : ""}.</div>}
+        {noFilteredLeads && <div className="t-empty">No leads match the current filters.<br/><button className="t-btn t-btn-outline t-btn-sm" style={{marginTop:12}} onClick={clearFilters}>Clear Filters</button></div>}
+        {!loading && leads.length>0 && filteredLeads.length > 0 && (
           <>
             {canBulkAssign && selected.size>0 && (
               <div className="t-bulk">
@@ -1157,17 +1237,20 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
                 <thead>
                   <tr>
                     {canBulkAssign && <th style={{width:32,textAlign:"center"}}><input type="checkbox" onChange={toggleAll} checked={selected.size===filteredLeads.length&&filteredLeads.length>0} style={{width:13,height:13}}/></th>}
-                    {shownHeaders.map(h=><th key={h} style={h==="Feedback"?{minWidth:200}:{}}>{colLabel(h)}</th>)}
-                    {canBulkAssign && <th>Assign</th>}
-                  </tr>
-                  <tr className="filter-row">
-                    {canBulkAssign && <td/>}
                     {shownHeaders.map(h=>(
-                      <td key={h} style={{padding:"2px 3px"}}>
-                        <ExcelColFilter header={colLabel(h)} values={colValues[h]||[]} selected={filters[h] || null} onChange={(vals)=>setColFilter(h,vals)}/>
-                      </td>
+                      <th key={h} style={h==="Feedback"?{minWidth:200}:{}}>
+                        <div className="th-filter-wrap">
+                          <span>{colLabel(h)}</span>
+                          <MultiSelectColFilter
+                            header={colLabel(h)}
+                            values={colValues[h]||[]}
+                            selected={filters[h]||null}
+                            onChange={(vals)=>setColFilter(h,vals)}
+                          />
+                        </div>
+                      </th>
                     ))}
-                    {canBulkAssign && <td/>}
+                    {canBulkAssign && <th>Assign</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -1191,6 +1274,94 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
         )}
       </div>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// REMARKS
+// ─────────────────────────────────────────────────────────────
+function RemarksModal({ name, value, onSave, onClose }) {
+  const [text, setText] = useState(value || "");
+  return (
+    <div className="t-modal-bg" onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
+      <div className="t-modal t-fade" style={{maxWidth:400}}>
+        <div className="t-modal-hd">
+          <span style={{textTransform:"none",letterSpacing:0,fontSize:14}}>{name || "Add Comment"}</span>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:20,lineHeight:1}}>×</button>
+        </div>
+        <div className="t-modal-body">
+          <textarea className="t-input" rows={5} value={text} onChange={e=>setText(e.target.value)} placeholder="Add Comment" autoFocus style={{resize:"vertical",fontSize:13,lineHeight:1.6,fontFamily:"var(--fb)"}}/>
+        </div>
+        <div className="t-modal-footer">
+          <button onClick={onClose} className="t-btn t-btn-outline">Cancel</button>
+          <button onClick={()=>{onSave(text); onClose();}} className="t-btn t-btn-black" disabled={text===value}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RemarksCell({ name, value, onSave, readOnly }) {
+  const [open, setOpen] = useState(false);
+  const hasValue = !!String(value||"").trim();
+  const cls = "remark-cell" + (hasValue?" has-value":"") + (readOnly?" read-only":"");
+  return (
+    <>
+      <div className={cls} onClick={()=>{ if(!readOnly) setOpen(true); }} title={hasValue ? value : "Add comment"}>
+        <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke={hasValue?"#0066b3":"#bbb"} strokeWidth="1.5" style={{flexShrink:0}}>
+          <path d="M2 2h10v8H8l-3 2V10H2V2z" strokeLinejoin="round"/>
+        </svg>
+        <span className="remark-cell-text" style={{color:hasValue?"#333":"#bbb"}}>
+          {hasValue ? value : (readOnly ? "—" : "Add comment")}
+        </span>
+        {!readOnly && !hasValue && <svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="#ccc" strokeWidth="1.5" style={{flexShrink:0}}><path d="M4.5 1v7M1 4.5h7"/></svg>}
+      </div>
+      {open && <RemarksModal name={name || "Comment"} value={value} onSave={v => { onSave && onSave(v); }} onClose={()=>setOpen(false)}/>}
+    </>
+  );
+}
+
+function AssignCell({ lead, recruiters, onAssign, busy }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const currentEmail = String(lead["Assigned To Email"] || "").toLowerCase();
+  const currentRecruiter = recruiters.find(r => r.email.toLowerCase() === currentEmail);
+  const currentName = currentRecruiter ? (currentRecruiter.name || currentRecruiter.email.split("@")[0]) : "";
+  useEffect(()=>{
+    function handler(e){ if(ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    if(open) document.addEventListener("mousedown", handler);
+    return ()=> document.removeEventListener("mousedown", handler);
+  },[open]);
+  return (
+    <div className="assign-cell-wrap" ref={ref}>
+      <button className={"assign-cell-btn" + (currentName?" assigned":" unassigned")} onClick={()=>!busy&&setOpen(!open)} disabled={busy}>
+        {currentName ? (<><svg width="10" height="10" viewBox="0 0 10 10" fill="var(--green)"><path d="M1 5l3 3 5-5" stroke="var(--green)" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>{currentName}</>) : (<><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--muted)" strokeWidth="1.5"><circle cx="5" cy="3.5" r="2"/><path d="M1 9c0-2.2 1.8-4 4-4s4 1.8 4 4"/></svg>Assign…</>)}
+        <svg width="7" height="7" viewBox="0 0 7 7" fill="none" stroke="currentColor" strokeWidth="1.5" style={{marginLeft:2}}><path d="M1 2l2.5 2.5L6 2"/></svg>
+      </button>
+      {open && (
+        <div className="assign-dropdown">
+          {recruiters.map(r=>{
+            const isSelected = r.email.toLowerCase() === currentEmail;
+            return (
+              <div key={r.email} className="assign-dropdown-item" onClick={()=>{ onAssign(lead, r.email); setOpen(false); }} style={isSelected?{background:"#f0fff7",color:"var(--green)",fontWeight:600}:{}}>
+                {isSelected && "✓ "}{r.name || r.email.split("@")[0]}
+                <div style={{fontSize:9,color:"var(--muted)",fontFamily:"var(--fm)"}}>{r.email}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatusSelect({ options, value, onChange }) {
+  const colorCls = getStatusColorCls(value);
+  return (
+    <select className={"status-sel " + colorCls} value={value || ""} onChange={e=>onChange(e.target.value)}>
+      <option value="">— select —</option>
+      {options.map(o=><option key={o} value={o}>{o}</option>)}
+    </select>
   );
 }
 
@@ -1343,7 +1514,7 @@ function UploadView({ user, agents, refreshMe }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// CAMPAIGNS VIEW — team filter fixed
+// CAMPAIGNS VIEW
 // ─────────────────────────────────────────────────────────────
 function CampaignsView({ agents, user, teams, onViewLeads }) {
   const [selAgent,setSelAgent]=useState("");
@@ -1360,7 +1531,6 @@ function CampaignsView({ agents, user, teams, onViewLeads }) {
     return <CampaignDetail campaign={openCampaign} agents={agents} tab={campaignTab} setTab={setCampaignTab} onBack={()=>setOpenCampaign(null)} onViewLeads={onViewLeads}/>;
   }
 
-  // Fix: filter by team using triggeredByTeam field
   const displayRows = selTeam
     ? rows.filter(r => r.triggeredByTeam === selTeam || r.triggeredByTeamId === selTeam || (teams.find(t=>t.id===selTeam||t.name===selTeam)?.name) === r.triggeredByTeam)
     : rows;
@@ -1380,7 +1550,6 @@ function CampaignsView({ agents, user, teams, onViewLeads }) {
           <AgentPicker agents={agents} value={selAgent} onChange={setSelAgent} allowAll/>
         </div>
       </div>
-      {/* Team tabs — white bg black text */}
       {teams && teams.length>0 && (user.role==="admin"||user.role==="super_admin") && (
         <div style={{display:"flex",gap:0,borderBottom:"2px solid var(--black)",background:"#fff",overflowX:"auto"}}>
           <div className={"t-tab"+(selTeam===""?" active":"")} onClick={()=>setSelTeam("")}>All Teams</div>
@@ -1478,6 +1647,49 @@ function CampaignDetail({ campaign, agents, tab, setTab, onBack, onViewLeads }) 
   );
 }
 
+// Helper for campaign tabs — renders table with multi-select filters
+function FilteredTable({ headers, rows, colLabelFn, renderCellFn, extraCols, extraHeader }) {
+  const { filters, filtered, colValues, setColFilter, clearFilters, clearColFilter } = useTableFilters(rows, headers);
+  const hasFilters = Object.keys(filters).filter(k=>filters[k]&&filters[k].length>0).length > 0;
+  function colLabel(h) { return colLabelFn ? colLabelFn(h) : h; }
+  return (
+    <div>
+      <ActiveFiltersBar filters={filters} colLabelFn={colLabel} onRemove={clearColFilter} onClearAll={clearFilters}/>
+      {!hasFilters && rows.length > 0 && (
+        <div style={{padding:"6px 14px",background:"#f8f8f8",borderBottom:"1px solid #eee",fontSize:10,color:"var(--muted)",fontFamily:"var(--fm)"}}>
+          {filtered.length} row{filtered.length!==1?"s":""}
+        </div>
+      )}
+      <div className="t-tbl-wrap">
+        <table className="t-tbl">
+          <thead>
+            <tr>
+              {headers.map(h=>(
+                <th key={h} style={h==="Feedback"?{minWidth:200}:{}}>
+                  <div className="th-filter-wrap">
+                    <span>{colLabel(h)}</span>
+                    <MultiSelectColFilter header={colLabel(h)} values={colValues[h]||[]} selected={filters[h]||null} onChange={vals=>setColFilter(h,vals)}/>
+                  </div>
+                </th>
+              ))}
+              {extraHeader && <th style={{background:"#f0fff7",color:"var(--green)"}}>{extraHeader}</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((row,i)=>(
+              <tr key={i}>
+                {headers.map(h=><td key={h} style={h==="Feedback"?{minWidth:200}:{}}>{renderCellFn(h,row[h],row)}</td>)}
+                {extraCols && <td style={{background:"#fafff8",borderLeft:"1px solid #e0f5e8"}}>{extraCols(row)}</td>}
+              </tr>
+            ))}
+            {filtered.length===0 && <tr><td colSpan={headers.length+(extraHeader?1:0)} style={{textAlign:"center",padding:40,color:"var(--muted)",fontFamily:"var(--fd)",fontWeight:700}}>No rows match filters</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function CampaignQualifiedTab({ campaign }) {
   const [leads,setLeads]=useState([]); const [headers,setHeaders]=useState([]); const [loading,setLoading]=useState(true);
   useEffect(()=>{
@@ -1494,8 +1706,6 @@ function CampaignQualifiedTab({ campaign }) {
   const outCols = headers.filter(h=>h.startsWith("out."));
   const inCols = headers.filter(h=>h.startsWith("in."));
   const shownHeaders = [...fixedCols.filter(h=>headers.includes(h)), ...dateCols, ...outCols, ...inCols];
-  const { filters, filtered, colValues, setColFilter, clearFilters } = useTableFilters(leads, shownHeaders);
-  const hasFilters = Object.keys(filters).length > 0;
 
   function colLabel(h) {
     if(h==="Recording URL") return "Recording";
@@ -1517,20 +1727,7 @@ function CampaignQualifiedTab({ campaign }) {
 
   if(loading) return <div style={{padding:60,textAlign:"center"}}><Spin/></div>;
   if(leads.length===0) return <div className="t-empty">No qualified leads for this campaign.</div>;
-  return (
-    <div>
-      {hasFilters && <div style={{padding:"6px 12px",background:"#fffbe0",borderBottom:"1px solid #ffc600",display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:11}}>Filtered: {filtered.length} of {leads.length}</span><button className="t-btn t-btn-sm t-btn-outline" onClick={clearFilters}>Clear ×</button></div>}
-      <div className="t-tbl-wrap">
-        <table className="t-tbl">
-          <thead>
-            <tr>{shownHeaders.map(h=><th key={h} style={h==="Feedback"?{minWidth:200}:{}}>{colLabel(h)}</th>)}</tr>
-            <tr className="filter-row">{shownHeaders.map(h=><td key={h} style={{padding:"2px 3px"}}><ExcelColFilter header={colLabel(h)} values={colValues[h]||[]} selected={filters[h]||null} onChange={v=>setColFilter(h,v)}/></td>)}</tr>
-          </thead>
-          <tbody>{filtered.map((lead,i)=><tr key={i}>{shownHeaders.map(h=><td key={h} style={h==="Feedback"?{minWidth:200}:{}}>{renderCell(h,lead[h],lead)}</td>)}</tr>)}</tbody>
-        </table>
-      </div>
-    </div>
-  );
+  return <FilteredTable headers={shownHeaders} rows={leads} colLabelFn={colLabel} renderCellFn={renderCell}/>;
 }
 
 function CampaignMasterTab({ campaign }) {
@@ -1572,8 +1769,6 @@ function CampaignMasterTab({ campaign }) {
   const outCols = headers.filter(h=>h.startsWith("out."));
   const inCols = headers.filter(h=>h.startsWith("in."));
   const shownHeaders = [...metaCols.filter(h=>headers.includes(h)), ...inCols, ...outCols];
-  const { filters, filtered, colValues, setColFilter, clearFilters } = useTableFilters(rows, shownHeaders);
-  const hasFilters = Object.keys(filters).length > 0;
 
   function colLabel(h) {
     if(h==="Recording URL") return "Recording";
@@ -1594,37 +1789,29 @@ function CampaignMasterTab({ campaign }) {
 
   if(loading) return <div style={{padding:60,textAlign:"center"}}><Spin/></div>;
   if(rows.length===0) return <div className="t-empty">No completed calls for this campaign yet.</div>;
+
   return (
     <div>
-      <div style={{padding:"8px 14px",background:"#f0f5ff",borderBottom:"1px solid #c7d7f5",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-        <span style={{fontSize:11,color:"var(--blue)",fontFamily:"var(--fb)"}}>Showing <b>{filtered.length}</b> calls{hasFilters && <> (filtered from {rows.length})</>}</span>
-        {hasFilters && <button className="t-btn t-btn-sm t-btn-outline" onClick={clearFilters}>Clear filters ×</button>}
-        {passMsg && <span style={{fontSize:11,color:passMsg.startsWith("✓")?"var(--green)":"var(--red)",fontWeight:600,fontFamily:"var(--fb)"}}>{passMsg}</span>}
-        <span style={{marginLeft:"auto",fontSize:10,color:"var(--muted)",fontFamily:"var(--fb)"}}>Use <b>→ Pass to QL</b> to manually add a candidate to Qualified Leads</span>
-      </div>
-      <div className="t-tbl-wrap">
-        <table className="t-tbl">
-          <thead>
-            <tr>{shownHeaders.map(h=><th key={h}>{colLabel(h)}</th>)}<th style={{background:"#f0fff7",color:"var(--green)"}}>→ QL</th></tr>
-            <tr className="filter-row">{shownHeaders.map(h=><td key={h} style={{padding:"2px 3px"}}><ExcelColFilter header={colLabel(h)} values={colValues[h]||[]} selected={filters[h]||null} onChange={v=>setColFilter(h,v)}/></td>)}<td/></tr>
-          </thead>
-          <tbody>
-            {filtered.map((row,i)=>{
-              const callId = String(row["Call ID"] || "").trim();
-              const alreadyPassed = passedToQL.has(callId);
-              const isPassing = passingToQL.has(callId);
-              return (
-                <tr key={i}>
-                  {shownHeaders.map(h=><td key={h}>{renderCell(h,row[h])}</td>)}
-                  <td style={{background:"#fafff8",borderLeft:"1px solid #e0f5e8"}}>
-                    {alreadyPassed ? <span className="pass-ql-done">✓ In QL</span> : isPassing ? <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:"var(--muted)"}}><Spin/>Adding…</span> : <button className="pass-ql-btn" onClick={()=>passToQL(row)}><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M1 5h8M6 2l3 3-3 3"/></svg>Pass to QL</button>}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      {passMsg && (
+        <div style={{padding:"8px 14px",background:passMsg.startsWith("✓")?"#f0fff7":"#fff0f0",borderBottom:"1px solid",borderColor:passMsg.startsWith("✓")?"#6ee7b7":"#fca5a5",fontSize:11,color:passMsg.startsWith("✓")?"var(--green)":"var(--red)",fontWeight:600,fontFamily:"var(--fb)"}}>
+          {passMsg}
+        </div>
+      )}
+      <FilteredTable
+        headers={shownHeaders}
+        rows={rows}
+        colLabelFn={colLabel}
+        renderCellFn={renderCell}
+        extraHeader="→ QL"
+        extraCols={(row)=>{
+          const callId = String(row["Call ID"] || "").trim();
+          const alreadyPassed = passedToQL.has(callId);
+          const isPassing = passingToQL.has(callId);
+          return alreadyPassed ? <span className="pass-ql-done">✓ In QL</span>
+            : isPassing ? <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:"var(--muted)"}}><Spin/>Adding…</span>
+            : <button className="pass-ql-btn" onClick={()=>passToQL(row)}><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M1 5h8M6 2l3 3-3 3"/></svg>Pass to QL</button>;
+        }}
+      />
     </div>
   );
 }
@@ -1641,9 +1828,6 @@ function CampaignNotConnectedTab({ campaign }) {
   },[campaign.requestId]);
 
   const shownHeaders = headers.length ? headers : ["Call ID","Callee Name","Mobile Number","Status","Retry Count","Retries Left","Next Retry Scheduled At","Last Updated"];
-  const { filters, filtered, colValues, setColFilter, clearFilters } = useTableFilters(rows, shownHeaders);
-  const hasFilters = Object.keys(filters).length > 0;
-
   function renderCell(h, val) {
     const strVal = String(val??"")||"";
     if(!strVal) return <span style={{color:"#ccc"}}>—</span>;
@@ -1662,20 +1846,7 @@ function CampaignNotConnectedTab({ campaign }) {
       </div>
       {loading && <div style={{padding:60,textAlign:"center"}}><Spin/></div>}
       {!loading && rows.length===0 && <div className="t-empty">No not-connected data yet.</div>}
-      {!loading && rows.length>0 && (
-        <div>
-          {hasFilters && <div style={{padding:"6px 12px",background:"#fffbe0",borderBottom:"1px solid #ffc600",display:"flex",gap:8}}><span style={{fontSize:11}}>Filtered: {filtered.length}/{rows.length}</span><button className="t-btn t-btn-sm t-btn-outline" onClick={clearFilters}>Clear ×</button></div>}
-          <div className="t-tbl-wrap">
-            <table className="t-tbl">
-              <thead>
-                <tr>{shownHeaders.map(h=><th key={h}>{h}</th>)}</tr>
-                <tr className="filter-row">{shownHeaders.map(h=><td key={h} style={{padding:"2px 3px"}}><ExcelColFilter header={h} values={colValues[h]||[]} selected={filters[h]||null} onChange={v=>setColFilter(h,v)}/></td>)}</tr>
-              </thead>
-              <tbody>{filtered.map((row,i)=><tr key={i}>{shownHeaders.map(h=><td key={h}>{renderCell(h,row[h])}</td>)}</tr>)}</tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {!loading && rows.length>0 && <FilteredTable headers={shownHeaders} rows={rows} renderCellFn={renderCell}/>}
     </div>
   );
 }
@@ -1977,7 +2148,7 @@ function TeamModal({ team, agents, onSave, onClose, isNew }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// USAGE VIEW — enhanced with team/user stats including QL, connected, lineup, CV awaited, empty status
+// USAGE VIEW
 // ─────────────────────────────────────────────────────────────
 function UsageView() {
   const [data,setData]=useState(null); const [range,setRange]=useState("7d");
@@ -1988,12 +2159,10 @@ function UsageView() {
 
   if(!data) return <div style={{padding:60,textAlign:"center"}}><Spin/></div>;
 
-  // Chart data
   const byDay={};
   (data.rows||[]).forEach(r=>{byDay[r.day]=(byDay[r.day]||0)+Number(r.minutes||0);});
   const chartData=Object.keys(byDay).sort().map(d=>({day:d,minutes:Math.round(byDay[d]*10)/10}));
 
-  // Team grouping with extended stats from leadStats
   const byTeam={};
   (data.rows||[]).forEach(r=>{
     const t=r.team||"No Team";
@@ -2002,8 +2171,6 @@ function UsageView() {
     byTeam[t].totalCalls+=Number(r.calls||0);
     byTeam[t].rows.push(r);
   });
-
-  // Aggregate lead stats per team
   (data.leadStats||[]).forEach(ls=>{
     const t=ls.team||"No Team";
     if(byTeam[t]){
@@ -2014,10 +2181,8 @@ function UsageView() {
       byTeam[t].emptyStatus += ls.emptyCallStatus||0;
     }
   });
-
   const teamList=Object.values(byTeam).sort((a,b)=>b.totalMins-a.totalMins);
 
-  // Per-user aggregation with extended stats
   const byUser = {};
   (data.rows||[]).forEach(r=>{
     const key = r.email || r.name;
@@ -2026,8 +2191,6 @@ function UsageView() {
     byUser[key].totalCalls+=Number(r.calls||0);
     byUser[key].days+=1;
   });
-
-  // Merge leadStats into user
   (data.leadStats||[]).forEach(ls=>{
     const key = ls.email;
     if(byUser[key]){
@@ -2038,13 +2201,9 @@ function UsageView() {
       byUser[key].emptyStatus = ls.emptyCallStatus||0;
     }
   });
-
   const userList = Object.values(byUser).sort((a,b)=>b.totalMins-a.totalMins);
   const userOptions = userList.map(u=>({label:u.name||u.email, value:u.email}));
-
-  const filteredRows = userFilter
-    ? (data.rows||[]).filter(r=>r.email===userFilter||r.name===userFilter)
-    : (data.rows||[]);
+  const filteredRows = userFilter ? (data.rows||[]).filter(r=>r.email===userFilter||r.name===userFilter) : (data.rows||[]);
 
   const grandTotalMins = (data.rows||[]).reduce((s,r)=>s+Number(r.minutes||0),0);
   const grandTotalCalls = (data.rows||[]).reduce((s,r)=>s+Number(r.calls||0),0);
@@ -2066,8 +2225,6 @@ function UsageView() {
           </select>
         </div>
       </div>
-
-      {/* Grand totals */}
       <div className="t-kpis" style={{gridTemplateColumns:"repeat(6,1fr)"}}>
         {[
           {label:"Total Minutes",value:Math.round(grandTotalMins*10)/10,color:"#ffc600"},
@@ -2084,7 +2241,6 @@ function UsageView() {
           </div>
         ))}
       </div>
-
       {chartData.length>0 && RECHARTS_OK && (
         <div className="t-board">
           <div className="t-board-hd"><h2 className="t-board-hd-title">Minutes Per Day</h2></div>
@@ -2101,7 +2257,6 @@ function UsageView() {
           </div>
         </div>
       )}
-
       {viewMode==="team" ? (
         <div className="t-board">
           <div className="t-board-hd"><h2 className="t-board-hd-title">By Team</h2><span className="t-board-meta">{teamList.length} teams</span></div>
@@ -2112,7 +2267,6 @@ function UsageView() {
                 <span className="usage-team-stat">{team.totalCalls} calls</span>
                 <span className="usage-team-stat">{team.totalMins} min</span>
               </div>
-              {/* Team KPI chips */}
               <div style={{padding:"10px 16px",display:"flex",gap:8,flexWrap:"wrap",borderBottom:"1px solid var(--border)"}}>
                 <span className="usage-stat-chip blue"><b>{team.totalCalls}</b><span>calls</span></span>
                 <span className="usage-stat-chip yellow"><b>{team.totalMins}</b><span>min</span></span>
@@ -2165,8 +2319,6 @@ function UsageView() {
               <span className="t-board-meta">{userFilter ? "1 user" : `${userList.length} users`}</span>
             </div>
           </div>
-
-          {/* Per-user summary cards with extended stats */}
           {!userFilter && (
             <div style={{padding:"12px 16px",display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:10,borderBottom:"1px solid var(--border)"}}>
               {userList.map(u=>{
@@ -2181,7 +2333,6 @@ function UsageView() {
                         <div className="usage-user-email">{u.email} · {u.team||"No team"}</div>
                       </div>
                     </div>
-                    {/* Stats chips */}
                     <div style={{padding:"8px 14px",display:"flex",gap:6,flexWrap:"wrap"}}>
                       <span className="usage-stat-chip blue"><b>{u.totalCalls}</b><span>calls</span></span>
                       <span className="usage-stat-chip yellow"><b>{u.totalMins}</b><span>min</span></span>
@@ -2207,15 +2358,12 @@ function UsageView() {
               })}
             </div>
           )}
-
-          {/* Detailed rows table */}
           <div className="t-tbl-wrap">
             <table className="t-tbl">
               <thead><tr><th>Day</th><th>User</th><th>Team</th><th>Calls</th><th>Minutes</th><th>QL</th><th>Connected</th><th>Lined Up</th><th>CV Awaited</th><th style={{color:"var(--red)"}}>Empty Status</th><th>Limit</th><th>Usage %</th></tr></thead>
               <tbody>
                 {filteredRows.map((r,i)=>{
                   const pct = r.dailyLimit>0 ? Math.min(100,Math.round((Number(r.minutes)/r.dailyLimit)*100)) : 0;
-                  // find lead stats for this user
                   const ls = (data.leadStats||[]).find(x=>x.email===r.email)||{};
                   return (
                     <tr key={i}>
