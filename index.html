@@ -57,13 +57,15 @@ html,body{margin:0;padding:0;background:var(--bg);font-family:var(--fb);-webkit-
 .t-mast-r{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 
 .t-kpis{background:var(--white);display:grid;border-bottom:2px solid var(--black)}
-.t-kpi{padding:14px 20px;border-right:1px solid var(--border);position:relative;overflow:hidden}
+.t-kpi{padding:16px 20px;border-right:1px solid var(--border);position:relative;overflow:hidden;transition:background .15s}
 .t-kpi:last-child{border-right:none}
-.t-kpi-accent{position:absolute;left:0;top:0;bottom:0;width:4px}
+.t-kpi:hover{background:#fafafa}
+.t-kpi-accent{position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:0 2px 2px 0}
 .t-kpi-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-bottom:5px}
-.t-kpi-label{font-family:var(--fd);font-weight:700;font-size:8px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
-.t-kpi-value{font-family:var(--fd);font-weight:900;font-size:32px;letter-spacing:-.05em;line-height:1;margin-top:4px}
-.t-kpi-sub{font-size:10px;color:var(--muted);margin-top:2px;font-family:var(--fm)}
+.t-kpi-label{font-family:var(--fd);font-weight:700;font-size:8px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:5px}
+.t-kpi-value{font-family:var(--fd);font-weight:900;font-size:32px;letter-spacing:-.05em;line-height:1;margin-top:4px;background:linear-gradient(135deg,var(--kpi-color,#0a0a0a) 0%,color-mix(in srgb,var(--kpi-color,#0a0a0a) 70%,#000) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.t-kpi-sub{font-size:10px;color:var(--muted);margin-top:3px;font-family:var(--fm)}
+.t-kpi-spark{position:absolute;right:12px;bottom:10px;opacity:.07;font-size:40px;font-family:var(--fd);font-weight:900;letter-spacing:-.05em;pointer-events:none;line-height:1}
 
 .t-tbl-wrap{overflow-x:auto;background:var(--white)}
 .t-tbl{width:100%;border-collapse:collapse;font-size:12px}
@@ -77,37 +79,37 @@ html,body{margin:0;padding:0;background:var(--bg);font-family:var(--fb);-webkit-
 .t-tbl .nm-sub{font-family:var(--fm);font-size:10px;color:var(--muted);margin-top:1px}
 .t-cell-wrap{max-width:200px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.4;word-break:break-word}
 .t-mono{font-family:var(--fm);font-size:11px}
-.t-tbl tr.filter-row td{padding:3px 4px;background:#f0f0f0;border-bottom:2px solid #d0d0d0;border-top:1px solid #e0e0e0}
+.t-tbl tr.filter-row td{padding:2px 4px;background:#f8f8f8;border-bottom:1.5px solid var(--border)}
 .t-tbl tr.selected td{background:#f0f0ff !important}
 
 /* ── EXCEL-STYLE COLUMN FILTER ── */
-.simple-col-filter{width:100%;padding:2px 18px 2px 5px;border:1.5px solid #e0e0e0;background:#f8f8f8 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23888'/%3E%3C/svg%3E") no-repeat right 4px center;background-size:7px 5px;-webkit-appearance:none;appearance:none;font-size:10px;font-family:var(--fd);font-weight:700;color:#555;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:2px;transition:all .1s;letter-spacing:.03em}
-.simple-col-filter:hover{border-color:#aaa;background-color:#f0f0f0}
-.simple-col-filter:focus{outline:none;border-color:var(--black);background-color:#fff}
-.simple-col-filter.has-filter{background-color:#e8f0fe;border-color:var(--blue);color:var(--blue);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%230066b3'/%3E%3C/svg%3E")}
+.simple-col-filter{width:100%;padding:2px 18px 2px 5px;border:1px solid #ddd;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23666'/%3E%3C/svg%3E") no-repeat right 4px center;background-size:7px 5px;-webkit-appearance:none;appearance:none;font-size:10px;font-family:var(--fb);color:var(--black);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:2px;transition:border-color .1s}
+.simple-col-filter:focus{outline:none;border-color:var(--black)}
+.simple-col-filter.has-filter{background-color:#e8f0fe;border-color:var(--blue);color:var(--blue)}
 
 /* ── TEAM BREAKDOWN ── */
 .team-breakdown-grid{display:grid;gap:16px;padding:16px 20px}
-.team-bd-card{border:1.5px solid var(--border);border-radius:4px;overflow:hidden;transition:box-shadow .15s,border-color .15s}.team-bd-card:hover{border-color:#aaa;box-shadow:0 4px 16px rgba(0,0,0,.08)}
-.team-bd-name{padding:12px 16px;background:linear-gradient(135deg,#0a0a0a 0%,#1a1a2e 100%);color:#fff;font-family:var(--fd);font-weight:900;font-size:12px;letter-spacing:.15em;text-transform:uppercase;display:flex;align-items:center;gap:10px}
-.team-bd-kpis{display:grid;grid-template-columns:repeat(7,1fr);border-bottom:2px solid var(--border);background:#fff}
-.team-bd-kpi{padding:12px 14px;text-align:center;border-right:1px solid var(--border);background:#fafafa}
+.team-bd-card{border:1.5px solid var(--border);border-radius:4px;overflow:hidden}
+.team-bd-name{padding:10px 14px;background:var(--black);color:#fff;font-family:var(--fd);font-weight:900;font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+.team-bd-kpis{display:grid;grid-template-columns:repeat(7,1fr);border-bottom:1px solid var(--border)}
+.team-bd-kpi{padding:12px 14px;text-align:center;border-right:1px solid var(--border);transition:background .12s;position:relative;overflow:hidden}
 .team-bd-kpi:last-child{border-right:none}
-.team-bd-kpi-v{font-family:var(--fd);font-weight:900;font-size:20px;color:var(--black);letter-spacing:-.03em}
-.team-bd-kpi-l{font-family:var(--fd);font-weight:700;font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+.team-bd-kpi:hover{background:#f8f8f8}
+.team-bd-kpi-v{font-family:var(--fd);font-weight:900;font-size:22px;color:var(--black);line-height:1;background:linear-gradient(135deg,var(--tkpi-color,#0a0a0a),color-mix(in srgb,var(--tkpi-color,#0a0a0a) 60%,#555));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.team-bd-kpi-l{font-family:var(--fd);font-weight:700;font-size:7px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-top:3px}
 .team-bd-agents{padding:8px 14px}
-.team-bd-agent-row{display:flex;align-items:center;gap:6px;padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:11px;font-family:var(--fb);flex-wrap:wrap;transition:background .1s;border-radius:2px}
+.team-bd-agent-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:11px;font-family:var(--fb);flex-wrap:wrap}
 .team-bd-agent-row:last-child{border-bottom:none}
 .team-bd-agent-name{flex:1;font-weight:600;min-width:100px}
 .team-bd-agent-stat{color:var(--muted);font-size:10px;white-space:nowrap}
 .team-bd-agent-chip{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:3px;font-size:9px;font-family:var(--fd);font-weight:700;letter-spacing:.06em;white-space:nowrap}
-.chip-calls{background:#dbeafe;color:#1d4ed8;border:1px solid #bfdbfe}
+.chip-calls{background:#e8f0fe;color:var(--blue)}
 .chip-min{background:#fef9c3;color:#854d0e}
-.chip-ql{background:#dcfce7;color:#166534;border:1px solid #bbf7d0;font-weight:900}
-.chip-conn{background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd}
-.chip-lineup{background:#ede9fe;color:#5b21b6;border:1px solid #ddd6fe}
+.chip-ql{background:#d1fae5;color:#065f46}
+.chip-conn{background:#e0f2fe;color:#0369a1}
+.chip-lineup{background:#ede9fe;color:#5b21b6}
 .chip-cv{background:#fef3c7;color:#92400e}
-.chip-empty{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;font-weight:900}
+.chip-empty{background:#fee2e2;color:#991b1b}
 
 .usage-team-section{margin-bottom:8px}
 .usage-team-hd{padding:8px 14px;background:#f5f5f5;border-bottom:1.5px solid var(--black);font-family:var(--fd);font-weight:900;font-size:10px;letter-spacing:.12em;text-transform:uppercase;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
@@ -871,31 +873,32 @@ function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
       </div>
       <div className="t-kpis" style={{gridTemplateColumns:"repeat(4,1fr)"}}>
         {[
-          {label:"Total Calls",value:s.totalCalls||0,color:"#0066b3"},
-          {label:"Total Minutes",value:s.totalMinutes||0,color:"#ffc600"},
-          {label:"Qualified Leads",value:s.qualifiedLeads||0,color:"#009149"},
-          {label:"Conversion",value:(s.conversionRate||0)+"%",color:"#e2001a"}
+          {label:"Total Calls",value:s.totalCalls||0,color:"#0066b3",icon:"📞"},
+          {label:"Total Minutes",value:s.totalMinutes||0,color:"#d97706",icon:"⏱"},
+          {label:"Qualified Leads",value:s.qualifiedLeads||0,color:"#009149",icon:"✓"},
+          {label:"Conversion",value:(s.conversionRate||0)+"%",color:"#e2001a",icon:"◎"}
         ].map(k=>(
-          <div key={k.label} className="t-kpi">
+          <div key={k.label} className="t-kpi" style={{"--kpi-color":k.color}}>
             <div className="t-kpi-accent" style={{background:k.color}}/>
-            <div className="t-kpi-label">{k.label}</div>
+            <div className="t-kpi-label"><span>{k.icon}</span>{k.label}</div>
             <div className="t-kpi-value">{k.value}</div>
+            <div className="t-kpi-spark">{k.value}</div>
           </div>
         ))}
       </div>
       <div className="t-kpis" style={{gridTemplateColumns:"repeat(6,1fr)"}}>
         {[
-          {label:"Assigned",value:s.assignedLeads||0,color:"#009149"},
-          {label:"Unassigned",value:s.unassignedLeads||0,color:"#e2001a"},
-          {label:"Connected",value:s.connectedCount||0,color:"#0066b3"},
-          {label:"Callbacks",value:s.callbackCount||0,color:"#ffc600"},
-          {label:"Lineups",value:lineupCount,color:"#009149",highlight:true},
-          {label:"CV Awaited",value:cvAwaitedCount,color:"#854d0e",highlight:"yellow"},
+          {label:"Assigned",value:s.assignedLeads||0,color:"#009149",icon:"👤"},
+          {label:"Unassigned",value:s.unassignedLeads||0,color:"#e2001a",icon:"⚠"},
+          {label:"Connected",value:s.connectedCount||0,color:"#0066b3",icon:"🔗"},
+          {label:"Callbacks",value:s.callbackCount||0,color:"#d97706",icon:"↩"},
+          {label:"Lineups",value:lineupCount,color:"#009149",highlight:true,icon:"🎯"},
+          {label:"CV Awaited",value:cvAwaitedCount,color:"#854d0e",highlight:"yellow",icon:"📄"},
         ].map(k=>(
-          <div key={k.label} className="t-kpi" style={k.highlight==="yellow"?{background:"#fefce8"}:k.highlight?{background:"#f0fff7"}:{}}>
+          <div key={k.label} className="t-kpi" style={{...(k.highlight==="yellow"?{background:"#fefce8"}:k.highlight?{background:"#f0fff7"}:{}),"--kpi-color":k.color}}>
             <div className="t-kpi-accent" style={{background:k.color}}/>
-            <div className="t-kpi-label">{k.label}</div>
-            <div className="t-kpi-value" style={k.highlight?{color:k.color}:{}}>{k.value}</div>
+            <div className="t-kpi-label"><span>{k.icon}</span>{k.label}</div>
+            <div className="t-kpi-value">{k.value}</div>
           </div>
         ))}
       </div>
@@ -927,17 +930,17 @@ function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
                 <div className="team-bd-name">{team.teamName||"Unnamed Team"}</div>
                 <div className="team-bd-kpis" style={{gridTemplateColumns:"repeat(7,1fr)"}}>
                   {[
-                    {l:"Calls",v:team.totalCalls||0,c:"#0066b3"},
-                    {l:"Minutes",v:team.totalMinutes||0,c:"#ffc600"},
-                    {l:"QL",v:team.qualifiedLeads||0,c:"#009149"},
-                    {l:"Connected",v:team.connectedCount||0,c:"#0369a1"},
-                    {l:"Lined Up",v:team.lineupCount||0,c:"#5b21b6"},
-                    {l:"CV Awaited",v:team.cvAwaitedCount||0,c:"#92400e"},
-                    {l:"Conversion",v:(team.conversionRate||0)+"%",c:"#e2001a"},
+                    {l:"Calls",v:team.totalCalls||0,c:"#0066b3",i:"📞"},
+                    {l:"Minutes",v:team.totalMinutes||0,c:"#d97706",i:"⏱"},
+                    {l:"QL",v:team.qualifiedLeads||0,c:"#009149",i:"✓"},
+                    {l:"Connected",v:team.connectedCount||0,c:"#0369a1",i:"🔗"},
+                    {l:"Lined Up",v:team.lineupCount||0,c:"#5b21b6",i:"🎯"},
+                    {l:"CV Awaited",v:team.cvAwaitedCount||0,c:"#92400e",i:"📄"},
+                    {l:"Conversion",v:(team.conversionRate||0)+"%",c:"#e2001a",i:"◎"},
                   ].map(k=>(
-                    <div key={k.l} className="team-bd-kpi">
-                      <div className="team-bd-kpi-v" style={{color:k.c}}>{k.v}</div>
-                      <div className="team-bd-kpi-l">{k.l}</div>
+                    <div key={k.l} className="team-bd-kpi" style={{"--tkpi-color":k.c}}>
+                      <div className="team-bd-kpi-v">{k.v}</div>
+                      <div className="team-bd-kpi-l">{k.i} {k.l}</div>
                     </div>
                   ))}
                 </div>
@@ -966,11 +969,38 @@ function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
   );
 }
 
+
+// ─────────────────────────────────────────────────────────────
+// VIRTUAL TABLE — renders only visible rows for performance
+// ─────────────────────────────────────────────────────────────
+function VirtualTable({ rows, rowHeight=44, visibleCount=30, renderRow, renderHeader, renderFilterRow }) {
+  const [scrollTop, setScrollTop] = useState(0);
+  const wrapRef = useRef(null);
+  const startIdx = Math.max(0, Math.floor(scrollTop / rowHeight) - 5);
+  const endIdx = Math.min(rows.length, startIdx + visibleCount + 10);
+  const paddingTop = startIdx * rowHeight;
+  const paddingBottom = Math.max(0, (rows.length - endIdx) * rowHeight);
+  return (
+    <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 260px)",background:"var(--white)"}}
+      ref={wrapRef}
+      onScroll={e=>setScrollTop(e.currentTarget.scrollTop)}>
+      <table className="t-tbl" style={{width:"100%"}}>
+        <thead>{renderHeader()}{renderFilterRow()}</thead>
+        <tbody>
+          {paddingTop>0 && <tr style={{height:paddingTop}}><td colSpan={999}/></tr>}
+          {rows.slice(startIdx,endIdx).map((row,i)=>renderRow(row,startIdx+i))}
+          {paddingBottom>0 && <tr style={{height:paddingBottom}}><td colSpan={999}/></tr>}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────
 // LEADS VIEW — with debounced search + client-side cache
 // ─────────────────────────────────────────────────────────────
 function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter }) {
-  const [selAgent, setSelAgent] = useState(initialFilter?.agentCode || (agents[0]?.agentCode||""));
+  const [selAgent, setSelAgent] = useState(initialFilter?.agentCode || "");
   const [leads, setLeads] = useState([]);
   const [headers, setHeaders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -995,36 +1025,44 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
   async function refresh() {
     setLoading(true);
     if(!selAgent) {
-      // All agents mode
+      // All agents — fetch per agent and merge
       const allLeads = [];
-      let allHeaders = [];
-      for(const a of agents) {
-        const r = await fetchLeadsWithCache(a.agentCode, { search, unassignedOnly, requestId: reqFilter||undefined });
-        if(r.ok && r.leads) {
-          r.leads.forEach(l => { l._agent = a.agentCode; l._agentName = a.displayName||a.agentCode; });
+      let mergedHeaders = [];
+      for(const agent of agents) {
+        const r = await fetchLeadsWithCache(agent.agentCode, { search, unassignedOnly, requestId: reqFilter||undefined });
+        if(r.ok && r.leads && r.leads.length > 0) {
+          r.leads.forEach(l => { l._agent = agent.agentCode; l._agentName = agent.displayName||agent.agentCode; });
           allLeads.push(...r.leads);
-          if(!allHeaders.length && r.headers) allHeaders = r.headers;
+          if(r.headers && r.headers.length > mergedHeaders.length) mergedHeaders = r.headers;
         }
       }
-      setLeads(allLeads); setHeaders(allHeaders); setLastRefresh(new Date()); setLoading(false);
+      setLoading(false);
+      setLeads(allLeads);
+      setHeaders(mergedHeaders);
+      setLastRefresh(new Date());
       return;
     }
-    const r = await fetchLeadsWithCache(selAgent, { search, unassignedOnly, requestId: reqFilter||undefined });
+    const r = await fetchLeadsWithCache(selAgent, {
+      search,
+      unassignedOnly,
+      requestId: reqFilter||undefined
+    });
     setLoading(false);
     if(r.ok){setLeads(r.leads||[]);setHeaders(r.headers||[]);setLastRefresh(new Date());}
   }
 
   useEffect(()=>{ refresh(); },[selAgent, search, unassignedOnly, reqFilter]);
   useEffect(()=>{
-    const t = setInterval(()=>{ if(selAgent) invalidateLeadCache(selAgent); refresh(); }, 5*60*1000);
+    if(!selAgent) return;
+    const t = setInterval(()=>{ invalidateLeadCache(selAgent); refresh(); }, 5*60*1000);
     return ()=>clearInterval(t);
   },[selAgent, search, unassignedOnly, reqFilter]);
 
-  const fixedCols = selAgent ? ["Callee Name","Mobile Number","Assigned To Email","Call Status","Feedback","Selection Process","Remarks","Recording URL"] : ["_agentName","Callee Name","Mobile Number","Assigned To Email","Call Status","Feedback","Selection Process","Remarks","Recording URL"];
+  const fixedCols = ["Callee Name","Mobile Number","Assigned To Email","Call Status","Feedback","Selection Process","Remarks","Recording URL"];
   const dateCols = headers.filter(h => isDateCol(h) && !fixedCols.includes(h));
   const outCols = headers.filter(h=>h.startsWith("out."));
   const inCols = headers.filter(h=>h.startsWith("in."));
-  const shownHeaders = [...fixedCols.filter(h=>headers.includes(h)), ...dateCols, ...outCols, ...inCols];
+  const shownHeaders = [...(!selAgent?["_agentName"]:[]), ...fixedCols.filter(h=>headers.includes(h)), ...dateCols, ...outCols, ...inCols];
 
   const { filters, filtered: rawFiltered, colValues, setColFilter, clearFilters } = useTableFilters(leads, shownHeaders);
   const hasFilters = Object.keys(filters).length > 0;
@@ -1073,13 +1111,18 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
   async function handleCellChange(callId, field, value) {
     // Optimistic update — instant UI response
     setLeads(prev => prev.map(l => l["Call ID"] === callId ? {...l, [field]: value} : l));
+    // Save in background
     const r = await api("updateLead",{agentCode:selAgent,callId,fields:{[field]:value}});
-    if (!r.ok) { invalidateLeadCache(selAgent); refresh(); }
+    if (!r.ok) {
+      // Revert on failure
+      invalidateLeadCache(selAgent);
+      refresh();
+    }
   }
 
   function renderCell(h, val, lead) {
     const strVal = String(val??"")||"";
-    if(h==="_agentName") return <span className="t-pill t-pill-blue" style={{fontSize:9}}>{strVal||"—"}</span>;
+    if(h==="_agentName") return <span style={{fontSize:10,fontFamily:"var(--fd)",fontWeight:700,background:"#e8f0fe",color:"var(--blue)",padding:"1px 6px",borderRadius:3,whiteSpace:"nowrap"}}>{strVal||"—"}</span>;
     if(h==="Recording URL") return <RecBtn url={strVal}/>;
     if(isDateCol(h)) return <DateCell value={strVal}/>;
     if(h==="Call Status") return <StatusSelect options={CALL_STATUS_OPTIONS} value={strVal} onChange={v=>handleCellChange(lead["Call ID"],"Call Status",v)}/>;
@@ -1107,7 +1150,7 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
         <div>
           <div className="t-mast-title">Leads</div>
           <div className="t-mast-sub" style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-            <span>{filteredLeads.length} leads {hasFilters && <span style={{background:"var(--yellow)",color:"var(--black)",padding:"1px 6px",borderRadius:3,fontFamily:"var(--fd)",fontWeight:900,fontSize:9,letterSpacing:".1em"}}>FILTERED</span>}</span>
+            <span>{filteredLeads.length} leads {hasFilters && `(filtered)`}</span>
             <span className="refresh-badge"><span className="refresh-dot"/>Auto-refresh 5m</span>
             {lastRefresh && <span style={{fontSize:9,color:"rgba(255,255,255,.3)"}}>Last: {lastRefresh.toLocaleTimeString()}</span>}
             {reqFilter && <>
@@ -1137,10 +1180,10 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
       </div>
 
       <div style={{flex:1,background:"var(--white)"}}>
-        {false && null}
-        {loading && <div style={{padding:60,textAlign:"center"}}><Spin/></div>}
-        {!loading && filteredLeads.length===0 && <div className="t-empty">No leads found.</div>}
-        {!loading && leads.length>0 && (
+        {false && <div className="t-empty">Pick an agent to view leads.</div>}
+        {selAgent && loading && <div style={{padding:60,textAlign:"center"}}><Spin/></div>}
+        {selAgent && !loading && filteredLeads.length===0 && <div className="t-empty">No leads found.</div>}
+        {selAgent && !loading && leads.length>0 && (
           <>
             {canBulkAssign && selected.size>0 && (
               <div className="t-bulk">
@@ -1153,41 +1196,42 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
                 <button className="t-btn t-btn-sm" onClick={()=>setSelected(new Set())} style={{color:"#fff",background:"transparent",border:"1px solid rgba(255,255,255,.3)"}}>Clear</button>
               </div>
             )}
-            <div className="t-tbl-wrap">
-              <table className="t-tbl">
-                <thead>
-                  <tr>
-                    {canBulkAssign && <th style={{width:32,textAlign:"center"}}><input type="checkbox" onChange={toggleAll} checked={selected.size===filteredLeads.length&&filteredLeads.length>0} style={{width:13,height:13}}/></th>}
-                    {shownHeaders.map(h=><th key={h} style={h==="Feedback"?{minWidth:200}:{}}>{colLabel(h)}</th>)}
-                    {canBulkAssign && <th>Assign</th>}
-                  </tr>
-                  <tr className="filter-row">
-                    {canBulkAssign && <td/>}
+            <VirtualTable
+              rows={filteredLeads}
+              rowHeight={44}
+              visibleCount={30}
+              renderHeader={()=>(
+                <tr>
+                  {canBulkAssign && <th style={{width:32,textAlign:"center"}}><input type="checkbox" onChange={toggleAll} checked={selected.size===filteredLeads.length&&filteredLeads.length>0} style={{width:13,height:13}}/></th>}
+                  {shownHeaders.map(h=><th key={h} style={h==="Feedback"?{minWidth:200}:{}}>{colLabel(h)}</th>)}
+                  {canBulkAssign && <th>Assign</th>}
+                </tr>
+              )}
+              renderFilterRow={()=>(
+                <tr className="filter-row">
+                  {canBulkAssign && <td/>}
+                  {shownHeaders.map(h=>(
+                    <td key={h} style={{padding:"2px 3px"}}>
+                      <ExcelColFilter header={colLabel(h)} values={colValues[h]||[]} selected={filters[h] || null} onChange={(vals)=>setColFilter(h,vals)}/>
+                    </td>
+                  ))}
+                  {canBulkAssign && <td/>}
+                </tr>
+              )}
+              renderRow={(lead,i)=>{
+                const callId = lead["Call ID"];
+                const isSel = selected.has(callId);
+                return (
+                  <tr key={callId||i} className={isSel?"selected":""}>
+                    {canBulkAssign && <td style={{textAlign:"center",width:32}}><input type="checkbox" checked={isSel} onChange={()=>toggleRow(callId)} style={{width:13,height:13}}/></td>}
                     {shownHeaders.map(h=>(
-                      <td key={h} style={{padding:"2px 3px"}}>
-                        <ExcelColFilter header={colLabel(h)} values={colValues[h]||[]} selected={filters[h] || null} onChange={(vals)=>setColFilter(h,vals)}/>
-                      </td>
+                      <td key={h} style={h==="Feedback"?{minWidth:200}:{}}>{renderCell(h, lead[h], lead)}</td>
                     ))}
-                    {canBulkAssign && <td/>}
+                    {canBulkAssign && <td><AssignCell lead={lead} recruiters={recruiters} onAssign={assign} busy={busy}/></td>}
                   </tr>
-                </thead>
-                <tbody>
-                  {filteredLeads.map((lead,i)=>{
-                    const callId = lead["Call ID"];
-                    const isSel = selected.has(callId);
-                    return (
-                      <tr key={i} className={isSel?"selected":""}>
-                        {canBulkAssign && <td style={{textAlign:"center",width:32}}><input type="checkbox" checked={isSel} onChange={()=>toggleRow(callId)} style={{width:13,height:13}}/></td>}
-                        {shownHeaders.map(h=>(
-                          <td key={h} style={h==="Feedback"?{minWidth:200}:{}}>{renderCell(h, lead[h], lead)}</td>
-                        ))}
-                        {canBulkAssign && <td><AssignCell lead={lead} recruiters={recruiters} onAssign={assign} busy={busy}/></td>}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                );
+              }}
+            />
           </>
         )}
       </div>
@@ -1389,11 +1433,12 @@ function CampaignsView({ agents, user, teams, onViewLeads }) {
         </div>
       )}
       <div className="t-kpis" style={{gridTemplateColumns:"repeat(4,1fr)"}}>
-        {[{label:"Running",value:live,color:"#e2001a"},{label:"Completed",value:done,color:"#009149"},{label:"Total Candidates",value:displayRows.reduce((a,r)=>a+(r.contactsCount||0),0),color:"#0066b3"},{label:"Total Qualified",value:totalQual,color:"#ffc600"}].map(k=>(
-          <div key={k.label} className="t-kpi">
+        {[{label:"Running",value:live,color:"#e2001a",icon:"▶"},{label:"Completed",value:done,color:"#009149",icon:"✓"},{label:"Total Candidates",value:displayRows.reduce((a,r)=>a+(r.contactsCount||0),0),color:"#0066b3",icon:"👥"},{label:"Total Qualified",value:totalQual,color:"#d97706",icon:"⭐"}].map(k=>(
+          <div key={k.label} className="t-kpi" style={{"--kpi-color":k.color}}>
             <div className="t-kpi-accent" style={{background:k.color}}/>
-            <div className="t-kpi-label">{k.label}</div>
+            <div className="t-kpi-label"><span>{k.icon}</span>{k.label}</div>
             <div className="t-kpi-value">{k.value}</div>
+            <div className="t-kpi-spark">{k.value}</div>
           </div>
         ))}
       </div>
@@ -1490,11 +1535,11 @@ function CampaignQualifiedTab({ campaign }) {
     })();
   },[campaign.requestId]);
 
-  const fixedCols = selAgent ? ["Callee Name","Mobile Number","Assigned To Email","Call Status","Feedback","Selection Process","Remarks","Recording URL"] : ["_agentName","Callee Name","Mobile Number","Assigned To Email","Call Status","Feedback","Selection Process","Remarks","Recording URL"];
+  const fixedCols = ["Callee Name","Mobile Number","Assigned To Email","Call Status","Feedback","Selection Process","Remarks","Recording URL"];
   const dateCols = headers.filter(h => isDateCol(h) && !fixedCols.includes(h));
   const outCols = headers.filter(h=>h.startsWith("out."));
   const inCols = headers.filter(h=>h.startsWith("in."));
-  const shownHeaders = [...fixedCols.filter(h=>headers.includes(h)), ...dateCols, ...outCols, ...inCols];
+  const shownHeaders = [...(!selAgent?["_agentName"]:[]), ...fixedCols.filter(h=>headers.includes(h)), ...dateCols, ...outCols, ...inCols];
   const { filters, filtered, colValues, setColFilter, clearFilters } = useTableFilters(leads, shownHeaders);
   const hasFilters = Object.keys(filters).length > 0;
 
@@ -1506,7 +1551,7 @@ function CampaignQualifiedTab({ campaign }) {
   }
   function renderCell(h, val, lead) {
     const strVal = String(val??"")||"";
-    if(h==="_agentName") return <span className="t-pill t-pill-blue" style={{fontSize:9}}>{strVal||"—"}</span>;
+    if(h==="_agentName") return <span style={{fontSize:10,fontFamily:"var(--fd)",fontWeight:700,background:"#e8f0fe",color:"var(--blue)",padding:"1px 6px",borderRadius:3,whiteSpace:"nowrap"}}>{strVal||"—"}</span>;
     if(h==="Recording URL") return <RecBtn url={strVal}/>;
     if(isDateCol(h)) return <DateCell value={strVal}/>;
     if(!strVal) return <span style={{color:"#ccc"}}>—</span>;
@@ -2072,16 +2117,16 @@ function UsageView() {
       {/* Grand totals */}
       <div className="t-kpis" style={{gridTemplateColumns:"repeat(6,1fr)"}}>
         {[
-          {label:"Total Minutes",value:Math.round(grandTotalMins*10)/10,color:"#ffc600"},
-          {label:"Total Calls",value:grandTotalCalls,color:"#0066b3"},
-          {label:"Active Users",value:userList.length,color:"#009149"},
-          {label:"Total QL",value:grandQL,color:"#009149"},
-          {label:"Connected",value:grandConnected,color:"#0369a1"},
-          {label:"Lined Up",value:grandLineup,color:"#5b21b6"},
+          {label:"Total Minutes",value:Math.round(grandTotalMins*10)/10,color:"#d97706",icon:"⏱"},
+          {label:"Total Calls",value:grandTotalCalls,color:"#0066b3",icon:"📞"},
+          {label:"Active Users",value:userList.length,color:"#009149",icon:"👤"},
+          {label:"Total QL",value:grandQL,color:"#009149",icon:"✓"},
+          {label:"Connected",value:grandConnected,color:"#0369a1",icon:"🔗"},
+          {label:"Lined Up",value:grandLineup,color:"#5b21b6",icon:"🎯"},
         ].map(k=>(
-          <div key={k.label} className="t-kpi">
+          <div key={k.label} className="t-kpi" style={{"--kpi-color":k.color}}>
             <div className="t-kpi-accent" style={{background:k.color}}/>
-            <div className="t-kpi-label">{k.label}</div>
+            <div className="t-kpi-label"><span>{k.icon}</span>{k.label}</div>
             <div className="t-kpi-value">{k.value}</div>
           </div>
         ))}
