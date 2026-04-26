@@ -49,3 +49,12 @@ app.post('/api', async (req, res) => {
 app.get('*', (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 app.listen(process.env.PORT || 3000, () => console.log('Voxa running'));
+
+
+// Keep-alive ping (free tier)
+if (process.env.RENDER_EXTERNAL_URL) {
+  setInterval(() => fetch(process.env.RENDER_EXTERNAL_URL + '/api', {
+    method: 'POST', body: JSON.stringify({ action: 'ping' }),
+    headers: { 'Content-Type': 'text/plain' }
+  }).catch(() => {}), 14 * 60 * 1000);
+}
