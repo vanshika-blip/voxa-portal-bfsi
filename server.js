@@ -2,11 +2,14 @@ const express = require('express');
 const fetch = require('node-fetch');
 const compression = require('compression');
 const NodeCache = require('node-cache');
+const cors = require('cors');
 const path = require('path');
 
 const app = express();
 const cache = new NodeCache({ stdTTL: 30 });
 const GAS_URL = process.env.GAS_URL;
+
+app.use(cors());
 
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
