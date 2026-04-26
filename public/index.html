@@ -1,0 +1,2307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Voxa — Call Center Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js" crossorigin></script>
+<script src="https://cdn.jsdelivr.net/npm/recharts@2.12.7/umd/Recharts.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+:root {
+  --black:  #0a0a0a;
+  --red:    #e2001a;
+  --green:  #009149;
+  --blue:   #0066b3;
+  --yellow: #ffc600;
+  --bg:     #f0f0f0;
+  --white:  #ffffff;
+  --border: #d0d0d0;
+  --muted:  #666666;
+  --light:  #f5f5f5;
+  --fd: 'Archivo', sans-serif;
+  --fm: 'IBM Plex Mono', monospace;
+  --fb: 'IBM Plex Sans', sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);font-family:var(--fb);-webkit-font-smoothing:antialiased;color:var(--black)}
+
+.t-app{display:flex;flex-direction:column;min-height:100vh}
+.t-topbar{background:var(--black);color:#fff;height:48px;display:flex;align-items:center;padding:0 20px;gap:20px;position:sticky;top:0;z-index:100;border-bottom:2px solid var(--red)}
+.t-logo{font-family:var(--fd);font-weight:900;font-size:22px;letter-spacing:-.05em;color:#fff;display:flex;align-items:center;gap:6px;flex-shrink:0}
+.t-logo-dot{display:inline-block;width:6px;height:6px;background:var(--red);border-radius:50%}
+.t-nav{display:flex;align-items:center;gap:2px;flex:1;margin-left:12px}
+.t-nav-btn{padding:5px 12px;font-family:var(--fd);font-weight:700;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.55);background:none;border:none;cursor:pointer;transition:all .12s;border-bottom:2px solid transparent}
+.t-nav-btn:hover{color:#fff}
+.t-nav-btn.active{color:#fff;border-bottom-color:var(--red)}
+.t-user-info{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:12px;color:rgba(255,255,255,.6)}
+.t-user-av{width:26px;height:26px;border-radius:50%;background:var(--red);color:#fff;display:flex;align-items:center;justify-content:center;font-family:var(--fd);font-weight:900;font-size:10px;flex-shrink:0}
+.t-user-name{font-family:var(--fd);font-weight:700;font-size:11px;color:#fff}
+.t-sf-link{background:none;border:none;color:rgba(255,255,255,.4);font-size:10px;cursor:pointer;font-family:var(--fb);padding:0;letter-spacing:.05em}
+.t-sf-link:hover{color:rgba(255,255,255,.8)}
+.t-usage-wrap{display:flex;align-items:center;gap:6px;font-size:10px;color:rgba(255,255,255,.4);font-family:var(--fm)}
+.t-usage-bar{width:60px;height:3px;background:rgba(255,255,255,.15)}
+.t-usage-fill{height:100%;background:var(--red)}
+.t-main{flex:1}
+
+.t-mast{background:var(--black);color:#fff;padding:16px 28px;display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid #222}
+.t-mast-title{font-family:var(--fd);font-weight:900;font-size:28px;letter-spacing:-.04em;text-transform:uppercase}
+.t-mast-sub{font-size:11px;color:rgba(255,255,255,.45);margin-top:3px;font-family:var(--fm)}
+.t-mast-r{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+
+.t-kpis{background:var(--white);display:grid;border-bottom:2px solid var(--black)}
+.t-kpi{padding:14px 20px;border-right:1px solid var(--border);position:relative;overflow:hidden}
+.t-kpi:last-child{border-right:none}
+.t-kpi-accent{position:absolute;left:0;top:0;bottom:0;width:3px}
+.t-kpi-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-bottom:5px}
+.t-kpi-label{font-family:var(--fd);font-weight:700;font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+.t-kpi-value{font-family:var(--fd);font-weight:900;font-size:30px;letter-spacing:-.04em;line-height:1;margin-top:2px}
+.t-kpi-sub{font-size:10px;color:var(--muted);margin-top:2px;font-family:var(--fm)}
+
+.t-tbl-wrap{overflow-x:auto;background:var(--white)}
+.t-tbl{width:100%;border-collapse:collapse;font-size:12px}
+.t-tbl th{text-align:left;font-family:var(--fd);font-weight:700;font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);padding:8px 10px;border-bottom:2px solid var(--black);background:var(--white);white-space:nowrap;position:sticky;top:0;z-index:2}
+.t-tbl td{padding:8px 10px;border-bottom:1px solid #eee;color:var(--black);vertical-align:middle;max-width:220px}
+.t-tbl tr:last-child td{border-bottom:none}
+.t-tbl tr:hover td{background:#f7f7fc}
+.t-tbl tr:nth-child(even) td{background:#fafafa}
+.t-tbl tr:nth-child(even):hover td{background:#f3f3f9}
+.t-tbl .nm{font-family:var(--fd);font-weight:700;font-size:13px;white-space:nowrap}
+.t-tbl .nm-sub{font-family:var(--fm);font-size:10px;color:var(--muted);margin-top:1px}
+.t-cell-wrap{max-width:200px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.4;word-break:break-word}
+.t-mono{font-family:var(--fm);font-size:11px}
+.t-tbl tr.filter-row td{padding:2px 4px;background:#f8f8f8;border-bottom:1.5px solid var(--border)}
+.t-tbl tr.selected td{background:#f0f0ff !important}
+
+/* ── EXCEL-STYLE COLUMN FILTER ── */
+.simple-col-filter{width:100%;padding:2px 18px 2px 5px;border:1px solid #ddd;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23666'/%3E%3C/svg%3E") no-repeat right 4px center;background-size:7px 5px;-webkit-appearance:none;appearance:none;font-size:10px;font-family:var(--fb);color:var(--black);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:2px;transition:border-color .1s}
+.simple-col-filter:focus{outline:none;border-color:var(--black)}
+.simple-col-filter.has-filter{background-color:#e8f0fe;border-color:var(--blue);color:var(--blue)}
+
+/* ── TEAM BREAKDOWN ── */
+.team-breakdown-grid{display:grid;gap:16px;padding:16px 20px}
+.team-bd-card{border:1.5px solid var(--border);border-radius:4px;overflow:hidden}
+.team-bd-name{padding:10px 14px;background:var(--black);color:#fff;font-family:var(--fd);font-weight:900;font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+.team-bd-kpis{display:grid;grid-template-columns:repeat(7,1fr);border-bottom:1px solid var(--border)}
+.team-bd-kpi{padding:10px 14px;text-align:center;border-right:1px solid var(--border)}
+.team-bd-kpi:last-child{border-right:none}
+.team-bd-kpi-v{font-family:var(--fd);font-weight:900;font-size:18px;color:var(--black)}
+.team-bd-kpi-l{font-family:var(--fd);font-weight:700;font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+.team-bd-agents{padding:8px 14px}
+.team-bd-agent-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:11px;font-family:var(--fb);flex-wrap:wrap}
+.team-bd-agent-row:last-child{border-bottom:none}
+.team-bd-agent-name{flex:1;font-weight:600;min-width:100px}
+.team-bd-agent-stat{color:var(--muted);font-size:10px;white-space:nowrap}
+.team-bd-agent-chip{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:3px;font-size:9px;font-family:var(--fd);font-weight:700;letter-spacing:.06em;white-space:nowrap}
+.chip-calls{background:#e8f0fe;color:var(--blue)}
+.chip-min{background:#fef9c3;color:#854d0e}
+.chip-ql{background:#d1fae5;color:#065f46}
+.chip-conn{background:#e0f2fe;color:#0369a1}
+.chip-lineup{background:#ede9fe;color:#5b21b6}
+.chip-cv{background:#fef3c7;color:#92400e}
+.chip-empty{background:#fee2e2;color:#991b1b}
+
+.usage-team-section{margin-bottom:8px}
+.usage-team-hd{padding:8px 14px;background:#f5f5f5;border-bottom:1.5px solid var(--black);font-family:var(--fd);font-weight:900;font-size:10px;letter-spacing:.12em;text-transform:uppercase;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.usage-team-stat{font-weight:400;color:var(--muted);font-size:10px}
+
+/* ── PILLS / TAGS ── */
+.t-pill{display:inline-flex;font-family:var(--fd);font-weight:700;font-size:8px;letter-spacing:.15em;padding:2px 7px;text-transform:uppercase;white-space:nowrap;border-radius:3px}
+.t-pill-live{background:var(--red);color:#fff}
+.t-pill-done{background:var(--green);color:#fff}
+.t-pill-hold{background:var(--yellow);color:var(--black)}
+.t-pill-arch{background:#888;color:#fff}
+.t-pill-blue{background:var(--blue);color:#fff}
+.t-pill-gray{background:#ddd;color:#444}
+.t-pill-prog{background:var(--black);color:#fff}
+.t-tag{display:inline-block;font-family:var(--fd);font-weight:700;font-size:8px;letter-spacing:.15em;padding:1px 6px;text-transform:uppercase;border:1.5px solid currentColor;border-radius:2px}
+.t-tag-purple{color:#5b21b6;border-color:#c4b5fd}
+.t-tag-blue{color:var(--blue);border-color:#93c5fd}
+.t-tag-green{color:var(--green);border-color:#6ee7b7}
+.t-tag-gray{color:#555;border-color:#ccc}
+.t-tag-red{color:var(--red);border-color:#fca5a5}
+
+/* ── BUTTONS ── */
+.t-btn{padding:6px 14px;font-family:var(--fd);font-weight:700;font-size:10px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;border:2px solid transparent;transition:all .12s;white-space:nowrap}
+.t-btn:disabled{opacity:.45;cursor:not-allowed}
+.t-btn-black{background:var(--black);color:#fff;border-color:var(--black)}
+.t-btn-black:hover:not(:disabled){background:#2a2a2a}
+.t-btn-outline{background:#fff;color:var(--black);border-color:var(--black)}
+.t-btn-outline:hover:not(:disabled){background:#f5f5f5}
+.t-btn-red{background:var(--red);color:#fff;border-color:var(--red)}
+.t-btn-green{background:var(--green);color:#fff;border-color:var(--green)}
+.t-btn-sm{padding:4px 10px;font-size:9px}
+
+/* ── FORM ── */
+.t-input{padding:7px 10px;border:1.5px solid var(--border);font-size:12px;font-family:var(--fb);width:100%;background:#fff;color:var(--black);transition:border-color .15s}
+.t-input:focus{outline:none;border-color:var(--black)}
+.t-label{font-family:var(--fd);font-weight:700;font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--black);display:block;margin-bottom:4px}
+.t-select{padding:7px 10px;border:1.5px solid var(--border);font-size:12px;font-family:var(--fb);background:#fff;color:var(--black);cursor:pointer}
+.t-select:focus{outline:none;border-color:var(--black)}
+
+/* ── INLINE CELL EDIT ── */
+.inline-sel{width:100%;padding:4px 6px;border:1.5px solid var(--border);font-size:11px;font-family:var(--fb);background:#fff;color:var(--black);cursor:pointer;transition:all .12s;border-radius:2px}
+.inline-sel:hover,.inline-sel:focus{border-color:var(--black);outline:none}
+.inline-inp{width:100%;padding:3px 6px;border:1px solid transparent;font-size:11px;font-family:var(--fb);background:transparent;color:var(--black);resize:none;transition:all .12s;min-height:32px}
+.inline-inp:hover,.inline-inp:focus{border-color:var(--black);background:#fff;outline:none}
+
+/* ── MODAL ── */
+.t-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px;z-index:200}
+.t-modal{background:#fff;border:2px solid var(--black);max-height:92vh;overflow-y:auto;width:100%;max-width:580px}
+.t-modal-hd{background:var(--black);color:#fff;padding:12px 18px;font-family:var(--fd);font-weight:900;font-size:15px;letter-spacing:-.02em;text-transform:uppercase;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:1}
+.t-modal-body{padding:20px 18px}
+.t-modal-footer{padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;position:sticky;bottom:0;background:#fff}
+
+/* ── AUTH ── */
+.t-auth-bg{background:var(--black);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
+.t-auth-card{background:#fff;border:3px solid var(--black);padding:32px;width:100%;max-width:400px}
+.t-auth-logo{font-family:var(--fd);font-weight:900;font-size:38px;letter-spacing:-.06em;color:var(--red);margin-bottom:2px}
+
+/* ── ALERTS ── */
+.t-alert{padding:8px 12px;font-size:11px;border-left:3px solid;font-family:var(--fb)}
+.t-alert-err{background:#fff0f0;color:var(--red);border-color:var(--red)}
+.t-alert-ok{background:#f0fff7;color:var(--green);border-color:var(--green)}
+.t-alert-info{background:#f0f5ff;color:var(--blue);border-color:var(--blue)}
+
+/* ── SPINNER ── */
+.t-spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(0,0,0,.12);border-top-color:var(--black);border-radius:50%;animation:tspin .7s linear infinite}
+.t-spin.w{border-color:rgba(255,255,255,.2);border-top-color:#fff}
+@keyframes tspin{to{transform:rotate(360deg)}}
+
+/* ── UPLOAD ── */
+.t-drop{border:2px dashed var(--border);padding:30px;text-align:center;cursor:pointer;transition:border-color .15s;background:#fafafa}
+.t-drop:hover,.t-drop.on{border-color:var(--black);background:#fff}
+
+/* ── QUAL VALUE TAGS ── */
+.t-qval{display:inline-flex;align-items:center;gap:4px;background:var(--black);color:#fff;padding:2px 8px;font-family:var(--fm);font-size:10px;margin:2px}
+.t-qval-rm{background:none;border:none;color:rgba(255,255,255,.5);cursor:pointer;font-size:13px;line-height:1;padding:0}
+.t-qval-rm:hover{color:#fff}
+.t-kwtag{display:inline-flex;align-items:center;gap:4px;background:#005a9e;color:#fff;padding:2px 8px;font-family:var(--fm);font-size:10px;margin:2px}
+.t-kwtag-rm{background:none;border:none;color:rgba(255,255,255,.5);cursor:pointer;font-size:13px;line-height:1;padding:0}
+.t-kwtag-rm:hover{color:#fff}
+
+/* ── BULK BAR ── */
+.t-bulk{position:sticky;bottom:0;background:var(--black);color:#fff;padding:10px 20px;display:flex;align-items:center;gap:10px;z-index:10;border-top:2px solid var(--red)}
+
+/* ── LEAD PILLS ── */
+.lp{display:inline-block;padding:2px 8px;font-size:10px;font-weight:700;font-family:var(--fd);white-space:nowrap;border-radius:3px;letter-spacing:.04em}
+.lp-g{background:#d1fae5;color:#065f46;border:1px solid #a7f3d0}
+.lp-r{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5}
+.lp-y{background:#fef9c3;color:#854d0e;border:1px solid #fde047}
+.lp-n{background:#f1f5f9;color:#475569;border:1px solid #e2e8f0}
+
+/* ── PROGRESS BAR ── */
+.t-bar{width:100%;height:4px;background:#efefef;display:block}
+.t-bar-fill{height:100%;display:block;background:var(--black)}
+.t-bar-fill.g{background:var(--green)}
+.t-bar-fill.r{background:var(--red)}
+
+/* ── BOARD / CARD ── */
+.t-board{background:var(--white);padding:0;color:var(--black)}
+.t-board-hd{padding:14px 20px;border-bottom:2px solid var(--black);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.t-board-hd-title{font-family:var(--fd);font-weight:900;font-size:16px;letter-spacing:-.02em;text-transform:uppercase;margin:0}
+.t-board-meta{font-family:var(--fm);font-size:10px;color:var(--muted)}
+
+/* ── DISC ── */
+.t-disc{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--fd);font-weight:900;font-size:10px;color:#fff;flex-shrink:0}
+
+/* ── BADGE ── */
+.badge-m{background:#d1fae5;color:#065f46;padding:1px 6px;font-size:9px;font-weight:700;font-family:var(--fd);border-radius:2px}
+.badge-u{background:#fee2e2;color:#991b1b;padding:1px 6px;font-size:9px;font-weight:700;font-family:var(--fd);border-radius:2px}
+.badge-o{background:#f1f5f9;color:#475569;padding:1px 6px;font-size:9px;font-weight:700;font-family:var(--fd);border-radius:2px}
+input[type=checkbox]{accent-color:var(--black);cursor:pointer}
+.t-fade{animation:tfade .18s ease-out}
+@keyframes tfade{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+
+/* ── TABS ── */
+.t-tabs{display:flex;gap:0;border-bottom:2px solid var(--black);background:#fff}
+.t-tab{padding:10px 18px;font-family:var(--fd);font-weight:700;font-size:10px;letter-spacing:.15em;text-transform:uppercase;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--muted);transition:all .12s}
+.t-tab:hover{color:var(--black)}
+.t-tab.active{color:var(--black);border-bottom-color:var(--red)}
+
+/* ── EMPTY ── */
+.t-empty{padding:60px 40px;text-align:center;color:var(--muted);font-family:var(--fd);font-weight:700;font-size:14px}
+
+/* ── CAMPAIGN CARD ── */
+.c-card{background:#fff;border:1.5px solid var(--border);padding:14px 18px;cursor:pointer;transition:border-color .12s,box-shadow .12s;margin-bottom:8px}
+.c-card:hover{border-color:var(--black);box-shadow:3px 3px 0 var(--black)}
+.c-card-hd{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px}
+.c-card-stats{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+.c-stat{text-align:center;padding:6px;background:#fafafa;border:1px solid #eee;border-radius:2px}
+.c-stat-v{font-family:var(--fd);font-weight:900;font-size:16px;letter-spacing:-.02em}
+.c-stat-l{font-family:var(--fd);font-weight:700;font-size:8px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+
+.out-cell{font-family:var(--fm);font-size:11px;color:#333;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;max-width:200px;line-height:1.4}
+.call-summary{font-size:11px;color:#444;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;max-width:280px;line-height:1.5;font-family:var(--fb)}
+
+/* ── RECORDING CELL ── */
+.rec-btn{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;background:var(--black);color:#fff;font-family:var(--fd);font-weight:700;font-size:9px;letter-spacing:.1em;text-decoration:none;border:none;cursor:pointer;transition:background .1s;border-radius:2px}
+.rec-btn:hover{background:#333}
+.rec-btn svg{flex-shrink:0}
+
+/* ── REMARK CELL ── */
+.remark-cell{display:flex;align-items:center;gap:5px;padding:4px 8px;cursor:pointer;border:1.5px solid var(--border);background:#fff;min-width:90px;transition:all .12s;border-radius:2px}
+.remark-cell:hover{border-color:var(--black);background:#fafafa}
+.remark-cell.has-value{border-color:#c7d7f5;background:#f0f5ff}
+.remark-cell.read-only{cursor:default;border-color:transparent;background:transparent;padding:2px 4px}
+.remark-cell.read-only:hover{border-color:transparent;background:transparent}
+.remark-cell-text{font-size:11px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;font-family:var(--fb)}
+
+/* ── ASSIGN CELL ── */
+.assign-cell-wrap{position:relative;display:inline-block}
+.assign-cell-btn{display:flex;align-items:center;gap:5px;padding:4px 10px;border:1.5px solid;cursor:pointer;font-size:11px;font-family:var(--fb);white-space:nowrap;transition:all .12s;background:#fff;border-radius:2px}
+.assign-cell-btn.unassigned{border-color:var(--border);color:var(--muted)}
+.assign-cell-btn.assigned{border-color:var(--green);color:var(--green);background:#f0fff7}
+.assign-cell-btn:hover{border-color:var(--black);color:var(--black);background:#f5f5f5}
+.assign-dropdown{position:absolute;top:calc(100% + 3px);left:0;background:#fff;border:2px solid var(--black);box-shadow:4px 4px 0 rgba(0,0,0,.15);z-index:9999;min-width:180px}
+.assign-dropdown-item{padding:8px 12px;cursor:pointer;font-size:12px;font-family:var(--fb);border-bottom:1px solid #f0f0f0}
+.assign-dropdown-item:last-child{border-bottom:none}
+.assign-dropdown-item:hover{background:#f5f5f5}
+
+/* ── STATUS SELECT ── */
+.status-sel{width:100%;padding:4px 6px;border:1.5px solid;font-size:11px;font-family:var(--fb);cursor:pointer;transition:all .12s;border-radius:2px;background:#fff;font-weight:600}
+.status-sel:focus{outline:none}
+.status-sel.s-none{border-color:var(--border);color:var(--muted);font-weight:400}
+.status-sel.s-green{border-color:#6ee7b7;background:#f0fff7;color:#065f46}
+.status-sel.s-red{border-color:#fca5a5;background:#fff0f0;color:#991b1b}
+.status-sel.s-yellow{border-color:#fde047;background:#fefce8;color:#854d0e}
+.status-sel.s-blue{border-color:#93c5fd;background:#eff6ff;color:#1e40af}
+
+/* ── TRIGGER CAMPAIGN ── */
+.tc-wrap{max-width:700px;margin:0 auto;padding:28px 24px}
+.tc-step{display:flex;gap:16px;margin-bottom:28px}
+.tc-step-num{width:28px;height:28px;background:var(--black);color:#fff;display:flex;align-items:center;justify-content:center;font-family:var(--fm);font-weight:700;font-size:13px;flex-shrink:0;margin-top:2px}
+.tc-step-body{flex:1}
+.tc-step-label{font-family:var(--fd);font-weight:900;font-size:11px;letter-spacing:.2em;text-transform:uppercase;margin-bottom:10px}
+.tc-agent-card{border:1.5px solid var(--border);padding:14px 16px;background:#fafafa;margin-top:10px}
+.tc-agent-name{font-family:var(--fd);font-weight:900;font-size:15px;margin-bottom:4px}
+.tc-agent-desc{font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5}
+.tc-req-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.tc-req-label{font-size:9px;font-family:var(--fd);font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--muted)}
+.tc-drop-zone{border:2px dashed #ccc;padding:40px 24px;text-align:center;cursor:pointer;transition:all .15s;background:#fff;position:relative}
+.tc-drop-zone:hover,.tc-drop-zone.active{border-color:var(--black);border-style:solid;background:#fafafa}
+.tc-drop-icon{width:40px;height:40px;margin:0 auto 10px;opacity:.3}
+.tc-drop-title{font-family:var(--fd);font-weight:800;font-size:13px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+.tc-drop-sub{font-size:11px;color:var(--muted)}
+.tc-file-info{border:2px solid var(--black);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fff;margin-top:10px}
+.tc-file-name{font-family:var(--fm);font-size:12px;font-weight:600}
+.tc-file-rows{font-size:10px;color:var(--muted);margin-top:2px}
+.tc-map-table{border:1.5px solid var(--black);width:100%;border-collapse:collapse;margin-top:10px}
+.tc-map-table th{padding:7px 10px;font-family:var(--fd);font-weight:700;font-size:9px;letter-spacing:.15em;text-transform:uppercase;background:var(--black);color:#fff;text-align:left}
+.tc-map-table td{padding:7px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+.tc-map-table tr:last-child td{border-bottom:none}
+.tc-map-field{font-family:var(--fm);font-size:11px;font-weight:600}
+.tc-map-req{font-size:9px;color:var(--muted)}
+.tc-trigger-btn{width:100%;padding:14px;background:var(--black);color:#fff;font-family:var(--fd);font-weight:900;font-size:13px;letter-spacing:.12em;text-transform:uppercase;border:none;cursor:pointer;transition:background .15s;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px}
+.tc-trigger-btn:hover:not(:disabled){background:#1a1a1a}
+.tc-trigger-btn:disabled{opacity:.5;cursor:not-allowed}
+.tc-result-card{border:2px solid var(--green);padding:20px;background:#f0fff7;margin-top:16px}
+.tc-result-title{font-family:var(--fd);font-weight:900;font-size:14px;color:var(--green);margin-bottom:8px}
+
+/* ── AUTO-REFRESH BADGE ── */
+.refresh-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;background:rgba(0,145,73,.12);border:1px solid rgba(0,145,73,.3);font-size:9px;font-family:var(--fd);font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--green);border-radius:3px}
+.refresh-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 1.5s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ── PASS TO QL ── */
+.pass-ql-btn{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:var(--black);color:#fff;font-family:var(--fd);font-weight:700;font-size:9px;letter-spacing:.08em;border:none;cursor:pointer;transition:background .1s;white-space:nowrap;border-radius:2px}
+.pass-ql-btn:hover:not(:disabled){background:#333}
+.pass-ql-btn:disabled{opacity:.5;cursor:not-allowed}
+.pass-ql-done{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:#f0fff7;border:1px solid var(--green);color:var(--green);font-family:var(--fd);font-weight:700;font-size:9px;letter-spacing:.08em;border-radius:2px}
+
+/* ── DATE CELL ── */
+.date-cell{font-family:var(--fm);font-size:10px;color:var(--muted);white-space:nowrap}
+
+/* ── USAGE USER CARD ── */
+.usage-user-card{border:1.5px solid var(--border);margin-bottom:1px;background:#fff;cursor:pointer;transition:border-color .12s}
+.usage-user-card:hover{border-color:var(--black)}
+.usage-user-hd{padding:10px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #f0f0f0}
+.usage-user-name{font-family:var(--fd);font-weight:900;font-size:12px}
+.usage-user-email{font-family:var(--fm);font-size:10px;color:var(--muted)}
+.usage-stat-chip{display:inline-flex;align-items:center;gap:4px;background:#f5f5f5;border:1px solid #e0e0e0;padding:2px 8px;font-family:var(--fm);font-size:10px;border-radius:3px}
+.usage-stat-chip span{color:var(--muted);font-size:9px}
+.usage-stat-chip.red{background:#fee2e2;border-color:#fca5a5;color:#991b1b}
+.usage-stat-chip.green{background:#d1fae5;border-color:#6ee7b7;color:#065f46}
+.usage-stat-chip.blue{background:#e8f0fe;border-color:#93c5fd;color:#1e40af}
+.usage-stat-chip.purple{background:#ede9fe;border-color:#c4b5fd;color:#5b21b6}
+.usage-stat-chip.yellow{background:#fef3c7;border-color:#fde68a;color:#92400e}
+
+/* ── STATUS BREAKDOWN ── */
+.status-bd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;padding:14px 16px}
+.status-bd-item{border:1.5px solid var(--border);padding:8px 12px;border-radius:3px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.status-bd-label{font-size:10px;font-family:var(--fb);color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.status-bd-count{font-family:var(--fd);font-weight:900;font-size:16px;flex-shrink:0}
+.status-bd-bar{height:3px;background:#eee;margin-top:6px;border-radius:2px}
+.status-bd-bar-fill{height:100%;border-radius:2px}
+
+/* ── MAST SELECT — white bg black text ── */
+.mast-select{padding:6px 10px;border:1.5px solid rgba(255,255,255,.3);font-size:12px;font-family:var(--fb);background:#fff;color:#000;cursor:pointer;border-radius:2px}
+.mast-select:focus{outline:none;border-color:#fff}
+.mast-select option{background:#fff;color:#000}
+
+/* ── USAGE TEAM CARD ── */
+.usage-team-card{border:1.5px solid var(--border);margin-bottom:12px;background:#fff}
+.usage-team-card-hd{padding:10px 16px;background:var(--black);color:#fff;font-family:var(--fd);font-weight:900;font-size:10px;letter-spacing:.12em;text-transform:uppercase;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.usage-team-kpis{display:grid;border-bottom:1px solid var(--border)}
+.usage-team-kpi{padding:10px 14px;text-align:center;border-right:1px solid var(--border)}
+.usage-team-kpi:last-child{border-right:none}
+.usage-team-kpi-v{font-family:var(--fd);font-weight:900;font-size:20px}
+.usage-team-kpi-l{font-family:var(--fd);font-weight:700;font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const API_URL = "/api";
+
+const { useState, useEffect, useMemo, useRef, useCallback } = React;
+const R = (typeof Recharts !== "undefined") ? Recharts : {};
+const RECHARTS_OK = !!(R && R.ResponsiveContainer && R.LineChart);
+
+// ── API cache layer ──
+const _cache = {};
+async function api(action, payload={}, cacheMs=0) {
+  const body = JSON.stringify({ action, session: localStorage.getItem("session"), ...payload });
+  const cacheKey = action + JSON.stringify(payload);
+  if (cacheMs > 0 && _cache[cacheKey] && (Date.now() - _cache[cacheKey].ts) < cacheMs) {
+    return _cache[cacheKey].data;
+  }
+  try {
+    const resp = await fetch(API_URL, { method:"POST", mode:"cors", headers:{"Content-Type":"text/plain;charset=utf-8"}, body });
+    const text = await resp.text();
+    try {
+      const data = JSON.parse(text);
+      if (cacheMs > 0) _cache[cacheKey] = { data, ts: Date.now() };
+      return data;
+    } catch(e) { return { ok:false, error:"BAD_JSON", raw:text.slice(0,500) }; }
+  } catch(e) { return { ok:false, error:"NETWORK_ERROR", message:e.message }; }
+}
+
+// ── Client-side lead cache (per agent, 5 min TTL) ──
+const _leadCache = {};
+async function fetchLeadsWithCache(agentCode, filter) {
+  // Only cache when no active filters beyond agentCode
+  const hasFilter = filter && (filter.search || filter.unassignedOnly || filter.requestId);
+  if (!hasFilter) {
+    const key = agentCode;
+    const now = Date.now();
+    if (_leadCache[key] && (now - _leadCache[key].ts) < 5 * 60 * 1000) {
+      return _leadCache[key].data;
+    }
+    const r = await api("getLeads", { agentCode, filter: {} });
+    if (r.ok) _leadCache[key] = { data: r, ts: now };
+    return r;
+  }
+  return await api("getLeads", { agentCode, filter });
+}
+function invalidateLeadCache(agentCode) {
+  if (agentCode) delete _leadCache[agentCode];
+  else Object.keys(_leadCache).forEach(k => delete _leadCache[k]);
+}
+
+function useDebounce(value, delay) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+}
+
+function Spin({ white }) { return <span className={"t-spin"+(white?" w":"")} />; }
+function Alert({ type, children }) {
+  const cls = type==="error"?"t-alert-err":type==="success"?"t-alert-ok":"t-alert-info";
+  return <div className={"t-alert "+cls}>{children}</div>;
+}
+function RoleTag({ role }) {
+  const map = { super_admin:"t-tag-purple", admin:"t-tag-blue", team_lead:"t-tag-green", recruiter:"t-tag-gray" };
+  const labels = { super_admin:"Super Admin", admin:"Admin", team_lead:"Team Lead", recruiter:"Recruiter" };
+  return <span className={"t-tag "+(map[role]||"t-tag-gray")}>{labels[role]||role}</span>;
+}
+function StatusPill({ status }) {
+  const s = String(status||"").toUpperCase();
+  const map = { COMPLETED:"done", IN_PROGRESS:"live", NOT_STARTED:"gray", FAILED:"live", CANCELLED:"arch", NOT_CONNECTED:"hold", SCHEDULED:"gray", INITIATED:"blue", RINGING:"blue", ACTIVE:"live" };
+  return <span className={"t-pill t-pill-"+(map[s]||"gray")}>{s||"—"}</span>;
+}
+const DISC_COLORS = ["#e2001a","#009149","#0066b3","#663399","#ff7a00","#555"];
+function Disc({ name }) {
+  const i = (name||"?").charCodeAt(0) % DISC_COLORS.length;
+  return <div className="t-disc" style={{background:DISC_COLORS[i]}}>{(name||"?")[0].toUpperCase()}</div>;
+}
+
+function LeadPill({ value }) {
+  if(!value) return <span style={{color:"#ccc"}}>—</span>;
+  const lower = value.toLowerCase().trim();
+  const isRed = lower.includes("not interested") || lower.includes("reject") || lower.includes("backout")
+    || lower.includes("duplicate") || lower.startsWith("dnp") || lower.includes(" dnp")
+    || lower.includes("wrong") || lower.includes("irrelevant") || lower.includes("not connected")
+    || lower.includes("career gap") || lower.includes("not working") || lower.includes("communication gap");
+  if (isRed) return <span className="lp lp-r">{value}</span>;
+  const isYellow = lower.includes("hold") || lower.includes("pending") || lower.includes("call back")
+    || lower.includes("awaited") || lower.includes("use later") || lower.includes("not reachable") || lower.includes("cv shared");
+  if (isYellow) return <span className="lp lp-y">{value}</span>;
+  const isGreen = lower.includes("connected") || lower.includes("interview") || lower.includes("interested")
+    || lower.includes("process") || lower.includes("joined") || lower.includes("offered")
+    || lower.includes("telephonic") || lower.includes("vc") || lower.includes("f2f")
+    || lower.includes("finals") || lower.includes("selected") || lower.includes("lined up");
+  if (isGreen) return <span className="lp lp-g">{value}</span>;
+  return <span className="lp lp-n">{value}</span>;
+}
+
+function getStatusColorCls(value) {
+  if (!value) return "s-none";
+  const lower = String(value).toLowerCase().trim();
+  if (lower.includes("not interested") || lower.includes("reject") || lower.includes("backout")
+    || lower.includes("duplicate") || lower.startsWith("dnp") || lower.includes(" dnp")
+    || lower.includes("wrong") || lower.includes("irrelevant")) return "s-red";
+  if (lower.includes("hold") || lower.includes("pending") || lower.includes("call back")
+    || lower.includes("awaited") || lower.includes("use later")) return "s-yellow";
+  if (lower === "connected" || lower.includes("connected") || lower.includes("interview")
+    || lower.includes("joined") || lower.includes("offered") || lower.includes("telephonic")
+    || lower.includes("vc") || lower.includes("f2f") || lower.includes("finals")
+    || lower.includes("selected") || lower.includes("process") || lower.includes("lined up")
+    || lower.includes("interested")) return "s-green";
+  return "s-blue";
+}
+
+function RecBtn({ url }) {
+  if (!url) return <span style={{color:"#ccc",fontSize:10}}>—</span>;
+  return (
+    <a href={url} target="_blank" className="rec-btn">
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9"/></svg>
+      Play
+    </a>
+  );
+}
+
+function DateCell({ value }) {
+  if (!value) return <span style={{color:"#ccc"}}>—</span>;
+  try {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return <span className="date-cell">{value}</span>;
+    return (
+      <div className="date-cell">
+        <div>{d.toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})}</div>
+        <div style={{fontSize:9,marginTop:1}}>{d.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}</div>
+      </div>
+    );
+  } catch { return <span className="date-cell">{value}</span>; }
+}
+
+// ─────────────────────────────────────────────────────────────
+// REMARKS MODAL
+// ─────────────────────────────────────────────────────────────
+function RemarksModal({ name, value, onSave, onClose }) {
+  const [text, setText] = useState(value || "");
+  return (
+    <div className="t-modal-bg" onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
+      <div className="t-modal t-fade" style={{maxWidth:400}}>
+        <div className="t-modal-hd">
+          <span style={{textTransform:"none",letterSpacing:0,fontSize:14}}>{name || "Add Comment"}</span>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:20,lineHeight:1}}>×</button>
+        </div>
+        <div className="t-modal-body">
+          <textarea className="t-input" rows={5} value={text} onChange={e=>setText(e.target.value)} placeholder="Add Comment" autoFocus style={{resize:"vertical",fontSize:13,lineHeight:1.6,fontFamily:"var(--fb)"}}/>
+        </div>
+        <div className="t-modal-footer">
+          <button onClick={onClose} className="t-btn t-btn-outline">Cancel</button>
+          <button onClick={()=>{onSave(text); onClose();}} className="t-btn t-btn-black" disabled={text===value}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RemarksCell({ name, value, onSave, readOnly }) {
+  const [open, setOpen] = useState(false);
+  const hasValue = !!String(value||"").trim();
+  const cls = "remark-cell" + (hasValue?" has-value":"") + (readOnly?" read-only":"");
+  return (
+    <>
+      <div className={cls} onClick={()=>{ if(!readOnly) setOpen(true); }} title={hasValue ? value : "Add comment"}>
+        <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke={hasValue?"#0066b3":"#bbb"} strokeWidth="1.5" style={{flexShrink:0}}>
+          <path d="M2 2h10v8H8l-3 2V10H2V2z" strokeLinejoin="round"/>
+        </svg>
+        <span className="remark-cell-text" style={{color:hasValue?"#333":"#bbb"}}>
+          {hasValue ? value : (readOnly ? "—" : "Add comment")}
+        </span>
+        {!readOnly && !hasValue && <svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="#ccc" strokeWidth="1.5" style={{flexShrink:0}}><path d="M4.5 1v7M1 4.5h7"/></svg>}
+      </div>
+      {open && <RemarksModal name={name || "Comment"} value={value} onSave={v => { onSave && onSave(v); }} onClose={()=>setOpen(false)}/>}
+    </>
+  );
+}
+
+function AssignCell({ lead, recruiters, onAssign, busy }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const currentEmail = String(lead["Assigned To Email"] || "").toLowerCase();
+  const currentRecruiter = recruiters.find(r => r.email.toLowerCase() === currentEmail);
+  const currentName = currentRecruiter ? (currentRecruiter.name || currentRecruiter.email.split("@")[0]) : "";
+  useEffect(()=>{
+    function handler(e){ if(ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    if(open) document.addEventListener("mousedown", handler);
+    return ()=> document.removeEventListener("mousedown", handler);
+  },[open]);
+  return (
+    <div className="assign-cell-wrap" ref={ref}>
+      <button className={"assign-cell-btn" + (currentName?" assigned":" unassigned")} onClick={()=>!busy&&setOpen(!open)} disabled={busy}>
+        {currentName ? (<><svg width="10" height="10" viewBox="0 0 10 10" fill="var(--green)"><path d="M1 5l3 3 5-5" stroke="var(--green)" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>{currentName}</>) : (<><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--muted)" strokeWidth="1.5"><circle cx="5" cy="3.5" r="2"/><path d="M1 9c0-2.2 1.8-4 4-4s4 1.8 4 4"/></svg>Assign…</>)}
+        <svg width="7" height="7" viewBox="0 0 7 7" fill="none" stroke="currentColor" strokeWidth="1.5" style={{marginLeft:2}}><path d="M1 2l2.5 2.5L6 2"/></svg>
+      </button>
+      {open && (
+        <div className="assign-dropdown">
+          {recruiters.map(r=>{
+            const isSelected = r.email.toLowerCase() === currentEmail;
+            return (
+              <div key={r.email} className="assign-dropdown-item" onClick={()=>{ onAssign(lead, r.email); setOpen(false); }} style={isSelected?{background:"#f0fff7",color:"var(--green)",fontWeight:600}:{}}>
+                {isSelected && "✓ "}{r.name || r.email.split("@")[0]}
+                <div style={{fontSize:9,color:"var(--muted)",fontFamily:"var(--fm)"}}>{r.email}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatusSelect({ options, value, onChange }) {
+  const colorCls = getStatusColorCls(value);
+  return (
+    <select className={"status-sel " + colorCls} value={value || ""} onChange={e=>onChange(e.target.value)}>
+      <option value="">— select —</option>
+      {options.map(o=><option key={o} value={o}>{o}</option>)}
+    </select>
+  );
+}
+
+const CALL_STATUS_OPTIONS = ["Connected","DNP-1","DNP-2","DNP-3","DNP-4","DNP-5","Hiring On hold","Irrelevant"];
+const FEEDBACK_OPTIONS = ["Duplicate / R1 Reject / DNP","Not interested / Not looking for job change","Location issue / Looking for specific city","Out of budget / High salary expectation","Low experience / Fresher","Overaged / Not eligible","Previously Evaluated","Communication gap","Not working currently / Career gap","Currently working – not open to move","Wrong number / Not connected","Other constraint","Relevant but looking for senior role","Not reachable / Call back later","Call back scheduled","CV Awaited / Shared","Interested: Interview Lined up","Interview: Done","Already in process / Selected","Currently Working in same company"];
+const SELECTION_OPTIONS = ["FB Pending","Backout","Offer Backout","Duplicate","Process","Reject","TL Reject","Position on hold","Position Closed","Interview Reject","Telephonic","VC","F2F","Finals","Use Later","On Hold","Offered","Joined","Drop"];
+
+const NAV_ITEMS = [
+  { id:"dashboard", label:"Dashboard" },
+  { id:"leads",     label:"Leads" },
+  { id:"trigger",   label:"Trigger Campaign" },
+  { id:"campaigns", label:"Campaigns" },
+  { id:"agents",    label:"Agents", superOnly:true },
+  { id:"users",     label:"Users", hideFor:["recruiter"] },
+  { id:"teams",     label:"Teams", hideFor:["recruiter","team_lead"] },
+  { id:"usage",     label:"Usage", hideFor:["recruiter"] },
+];
+
+// ── Excel column filter — fixed to use controlled value properly ──
+function ExcelColFilter({ header, values, selected, onChange }) {
+  const allVals = useMemo(() => [...new Set(values.map(v=>String(v||"")))].sort((a,b)=>a.localeCompare(b)), [values]);
+  const curVal = (selected && selected.length === 1) ? selected[0] : "";
+  const hasFilter = Boolean(curVal);
+  return (
+    <select
+      className={"simple-col-filter"+(hasFilter?" has-filter":"")}
+      value={curVal}
+      onChange={e => { const v=e.target.value; onChange(v ? [v] : null); }}
+      title={header}
+    >
+      <option value="">All ▾</option>
+      {allVals.map(v=><option key={v} value={v}>{v||"(blank)"}</option>)}
+    </select>
+  );
+}
+
+// ── Table filter hook — fixed to apply filters correctly ──
+function useTableFilters(data, headers) {
+  const [filters, setFilters] = useState({});
+
+  // Reset filters when data/headers change significantly
+  useEffect(() => { setFilters({}); }, [headers.join(",")]);
+
+  const colValues = useMemo(() => {
+    const m = {};
+    headers.forEach(h => { m[h] = data.map(row => String(row[h]??"")); });
+    return m;
+  }, [data, headers]);
+
+  const filtered = useMemo(() => {
+    const activeFilters = Object.entries(filters).filter(([, vals]) => vals && vals.length > 0);
+    if (activeFilters.length === 0) return data;
+    return data.filter(row =>
+      activeFilters.every(([col, allowed]) => allowed.includes(String(row[col]??"")))
+    );
+  }, [data, filters]);
+
+  function setColFilter(col, vals) {
+    setFilters(f => {
+      const n = {...f};
+      if (!vals || vals.length === 0) { delete n[col]; }
+      else { n[col] = vals; }
+      return n;
+    });
+  }
+  function clearFilters() { setFilters({}); }
+
+  return { filters, filtered, colValues, setColFilter, clearFilters };
+}
+
+function isDateCol(h) {
+  return /^(date|called.?at|call.?date|start.?time|timestamp|created.?at|called.?on)$/i.test(h)
+    || /date$/i.test(h) || h === "Date";
+}
+
+// ─────────────────────────────────────────────────────────────
+// AUTH SCREENS
+// ─────────────────────────────────────────────────────────────
+function LoginScreen({ onLoggedIn, goForgot }) {
+  const [email,setEmail]=useState(""); const [password,setPassword]=useState("");
+  const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
+  async function submit(e){
+    e.preventDefault(); setErr(""); setBusy(true);
+    const r = await api("login",{ email, password });
+    setBusy(false);
+    if(!r.ok){setErr(r.message||(r.error==="INVALID_CREDENTIALS"?"Invalid email or password.":r.error));return;}
+    localStorage.setItem("session",r.session); onLoggedIn(r.user);
+  }
+  return (
+    <div className="t-auth-bg">
+      <div className="t-auth-card t-fade">
+        <div className="t-auth-logo">VOXA<span style={{display:"inline-block",width:8,height:8,background:"var(--red)",borderRadius:"50%",marginLeft:4}}/></div>
+        <div style={{fontSize:10,fontFamily:"var(--fd)",fontWeight:700,letterSpacing:".2em",textTransform:"uppercase",color:"var(--muted)",marginBottom:22}}>Sign in to your workspace</div>
+        <form onSubmit={submit} style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div><label className="t-label">Email</label><input className="t-input" type="email" autoFocus value={email} onChange={e=>setEmail(e.target.value)} required placeholder="you@company.com"/></div>
+          <div><label className="t-label">Password</label><input className="t-input" type="password" value={password} onChange={e=>setPassword(e.target.value)} required placeholder="••••••••"/></div>
+          <button type="submit" disabled={busy} className="t-btn t-btn-black" style={{width:"100%",padding:"10px"}}>{busy?<Spin/>:"Sign In"}</button>
+          {err && <Alert type="error">{err}</Alert>}
+          <div style={{textAlign:"center"}}><button type="button" onClick={goForgot} style={{background:"none",border:"none",color:"var(--muted)",fontSize:11,cursor:"pointer",fontFamily:"var(--fb)"}}>Forgot password?</button></div>
+        </form>
+      </div>
+    </div>
+  );
+}
+function ForgotScreen({ goLogin }) {
+  const [email,setEmail]=useState(""); const [done,setDone]=useState(false); const [busy,setBusy]=useState(false);
+  async function submit(e){ e.preventDefault(); setBusy(true); await api("requestReset",{email}); setBusy(false); setDone(true); }
+  return (
+    <div className="t-auth-bg">
+      <div className="t-auth-card t-fade">
+        <div className="t-auth-logo">VOXA</div>
+        <div style={{fontSize:10,fontFamily:"var(--fd)",fontWeight:700,letterSpacing:".2em",textTransform:"uppercase",color:"var(--muted)",marginBottom:20}}>Reset password</div>
+        {done ? (<div><Alert type="success">Reset link sent.</Alert><button onClick={goLogin} className="t-btn t-btn-outline" style={{width:"100%",marginTop:12}}>Back to Sign In</button></div>) : (
+          <form onSubmit={submit} style={{display:"flex",flexDirection:"column",gap:10}}>
+            <input className="t-input" type="email" autoFocus value={email} onChange={e=>setEmail(e.target.value)} required placeholder="you@company.com"/>
+            <button type="submit" disabled={busy} className="t-btn t-btn-black" style={{width:"100%"}}>{busy?<Spin/>:"Send Reset Link"}</button>
+            <button type="button" onClick={goLogin} style={{background:"none",border:"none",color:"var(--muted)",fontSize:11,cursor:"pointer",textAlign:"center",fontFamily:"var(--fb)"}}>Back to Sign In</button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+function SetupScreen({ token, onCompleted, goLogin }) {
+  const [loading,setLoading]=useState(true); const [info,setInfo]=useState(null);
+  const [p1,setP1]=useState(""); const [p2,setP2]=useState("");
+  const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
+  useEffect(()=>{ (async()=>{ const r=await api("verifyToken",{token}); setLoading(false); if(!r.ok){setErr(r.message||"Link invalid or expired.");return;} setInfo(r); })(); },[token]);
+  async function submit(e){
+    e.preventDefault();
+    if(p1.length<8) return setErr("Password must be at least 8 characters.");
+    if(p1!==p2) return setErr("Passwords don't match.");
+    setBusy(true); setErr("");
+    const r=await api("completeSetup",{token,password:p1});
+    setBusy(false);
+    if(!r.ok) return setErr(r.message||r.error);
+    localStorage.setItem("session",r.session); onCompleted(r.user);
+  }
+  if(loading) return <div className="t-auth-bg"><Spin/></div>;
+  return (
+    <div className="t-auth-bg">
+      <div className="t-auth-card t-fade">
+        <div className="t-auth-logo">VOXA</div>
+        {info ? (
+          <form onSubmit={submit} style={{display:"flex",flexDirection:"column",gap:12}}>
+            <p style={{fontSize:11,color:"var(--muted)",margin:"0 0 6px"}}>Welcome {info.name||info.email}. Create a password to continue.</p>
+            <div><label className="t-label">Password</label><input className="t-input" type="password" autoFocus value={p1} onChange={e=>setP1(e.target.value)} required minLength={8} placeholder="at least 8 characters"/></div>
+            <div><label className="t-label">Confirm</label><input className="t-input" type="password" value={p2} onChange={e=>setP2(e.target.value)} required/></div>
+            <button type="submit" disabled={busy} className="t-btn t-btn-black" style={{width:"100%"}}>{busy?<Spin/>:"Set Password & Sign In"}</button>
+            {err&&<Alert type="error">{err}</Alert>}
+          </form>
+        ) : (<div><Alert type="error">{err}</Alert><button onClick={goLogin} className="t-btn t-btn-outline" style={{width:"100%",marginTop:12}}>Back to Sign In</button></div>)}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// SHELL
+// ─────────────────────────────────────────────────────────────
+function Shell({ user, today, onLogout, view, setView, children, onChangePw }) {
+  const visible = NAV_ITEMS.filter(n => {
+    if(n.superOnly && user.role!=="super_admin") return false;
+    if(n.hideFor && n.hideFor.includes(user.role)) return false;
+    return true;
+  });
+  const isUnlimited = today && today.unlimited;
+  const pct = (!isUnlimited && today) ? Math.min(100,(today.minutesUsed/Math.max(1,today.minutesLimit))*100) : 0;
+  return (
+    <div className="t-app">
+      <div className="t-topbar">
+        <div className="t-logo">VOXA<span className="t-logo-dot"/></div>
+        <nav className="t-nav">
+          {visible.map(n=>(
+            <button key={n.id} className={"t-nav-btn"+(view===n.id?" active":"")} onClick={()=>setView(n.id)}>{n.label}</button>
+          ))}
+        </nav>
+        <div className="t-user-info">
+          {today && (
+            <div className="t-usage-wrap">
+              {isUnlimited ? (
+                <span style={{fontSize:10,fontFamily:"var(--fd)",fontWeight:700,letterSpacing:".12em",textTransform:"uppercase",color:"rgba(255,255,255,.85)",background:"rgba(255,255,255,.12)",padding:"3px 10px",borderRadius:3}}>∞ Unlimited</span>
+              ) : (
+                <><span>{today.minutesUsed}/{today.minutesLimit}m</span><div className="t-usage-bar"><div className="t-usage-fill" style={{width:pct+"%"}}/></div></>
+              )}
+            </div>
+          )}
+          <div className="t-user-av">{(user.name||user.email)[0].toUpperCase()}</div>
+          <div>
+            <div className="t-user-name">{user.name||user.email}</div>
+            <div style={{display:"flex",gap:6}}>
+              <button className="t-sf-link" onClick={onChangePw}>Pwd</button>
+              <button className="t-sf-link" onClick={onLogout}>Sign out</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <main className="t-main">{children}</main>
+    </div>
+  );
+}
+
+function ChangePasswordModal({ onClose }) {
+  const [oldPw,setOldPw]=useState(""); const [newPw,setNewPw]=useState(""); const [confirm,setConfirm]=useState("");
+  const [err,setErr]=useState(""); const [busy,setBusy]=useState(false); const [ok,setOk]=useState(false);
+  async function submit(e){
+    e.preventDefault();
+    if(newPw.length<8) return setErr("New password must be at least 8 characters.");
+    if(newPw!==confirm) return setErr("Passwords don't match.");
+    setBusy(true); setErr("");
+    const r=await api("changePassword",{oldPassword:oldPw,newPassword:newPw});
+    setBusy(false);
+    if(!r.ok) return setErr(r.error==="OLD_PASSWORD_WRONG"?"Current password is incorrect.":(r.message||r.error));
+    setOk(true);
+  }
+  return (
+    <div className="t-modal-bg">
+      <div className="t-modal t-fade">
+        <div className="t-modal-hd">Change Password<button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:18,lineHeight:1}}>×</button></div>
+        <div className="t-modal-body">
+          {ok ? <Alert type="success">Password updated.</Alert> : (
+            <form onSubmit={submit} style={{display:"flex",flexDirection:"column",gap:12}}>
+              <div><label className="t-label">Current Password</label><input className="t-input" type="password" value={oldPw} onChange={e=>setOldPw(e.target.value)} required/></div>
+              <div><label className="t-label">New Password</label><input className="t-input" type="password" value={newPw} onChange={e=>setNewPw(e.target.value)} required/></div>
+              <div><label className="t-label">Confirm</label><input className="t-input" type="password" value={confirm} onChange={e=>setConfirm(e.target.value)} required/></div>
+              {err&&<Alert type="error">{err}</Alert>}
+            </form>
+          )}
+        </div>
+        <div className="t-modal-footer">
+          <button onClick={onClose} className="t-btn t-btn-outline">Close</button>
+          {!ok && <button onClick={e=>{document.querySelector(".t-modal form")?.dispatchEvent(new Event("submit",{bubbles:true,cancelable:true}));}} className="t-btn t-btn-black" disabled={busy}>{busy?<Spin white/>:"Update"}</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AgentPicker({ agents, value, onChange, allowAll }) {
+  if(!agents||agents.length===0) return <span style={{fontSize:11,color:"var(--muted)"}}>No agents</span>;
+  return (
+    <select className="mast-select" value={value||""} onChange={e=>onChange(e.target.value)} style={{minWidth:180}}>
+      {allowAll && <option value="">All agents</option>}
+      {!allowAll && !value && <option value="" disabled>Select agent…</option>}
+      {agents.map(a=><option key={a.agentCode} value={a.agentCode}>{a.displayName||a.agentCode}</option>)}
+    </select>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// DASHBOARD
+// ─────────────────────────────────────────────────────────────
+function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
+  const [data,setData]=useState(null); const [range,setRange]=useState("7d");
+
+  async function load() {
+    const r = await api("getDashboard",{range,agentCode:selectedAgent});
+    if(r.ok) setData(r);
+  }
+  useEffect(()=>{ setData(null); load(); },[range,selectedAgent]);
+  useEffect(()=>{
+    const t = setInterval(load, 5*60*1000);
+    return ()=>clearInterval(t);
+  },[range,selectedAgent]);
+
+  if(!data) return <div style={{display:"flex",justifyContent:"center",padding:60}}><Spin/></div>;
+  const s=data.stats||{};
+  const lineupCount = s.lineupCount || 0;
+  const cvAwaitedCount = s.cvAwaitedCount || 0;
+
+  return (
+    <div className="t-fade">
+      <div className="t-mast">
+        <div>
+          <div className="t-mast-title">Dashboard</div>
+          <div className="t-mast-sub" style={{display:"flex",alignItems:"center",gap:10}}>
+            <span>{range==="today"?"Today":range==="7d"?"Last 7 days":"Last 30 days"}</span>
+            <span className="refresh-badge"><span className="refresh-dot"/>Auto-refresh 5m</span>
+          </div>
+        </div>
+        <div className="t-mast-r">
+          <AgentPicker agents={agents} value={selectedAgent} onChange={setSelectedAgent} allowAll/>
+          <select className="mast-select" value={range} onChange={e=>setRange(e.target.value)}>
+            <option value="today">Today</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option>
+          </select>
+          <button className="t-btn t-btn-outline t-btn-sm" style={{color:"rgba(255,255,255,.7)",borderColor:"rgba(255,255,255,.3)",background:"transparent"}} onClick={load}>↻ Refresh</button>
+        </div>
+      </div>
+      <div className="t-kpis" style={{gridTemplateColumns:"repeat(4,1fr)"}}>
+        {[
+          {label:"Total Calls",value:s.totalCalls||0,color:"#0066b3"},
+          {label:"Total Minutes",value:s.totalMinutes||0,color:"#ffc600"},
+          {label:"Qualified Leads",value:s.qualifiedLeads||0,color:"#009149"},
+          {label:"Conversion",value:(s.conversionRate||0)+"%",color:"#e2001a"}
+        ].map(k=>(
+          <div key={k.label} className="t-kpi">
+            <div className="t-kpi-accent" style={{background:k.color}}/>
+            <div className="t-kpi-label">{k.label}</div>
+            <div className="t-kpi-value">{k.value}</div>
+          </div>
+        ))}
+      </div>
+      <div className="t-kpis" style={{gridTemplateColumns:"repeat(6,1fr)"}}>
+        {[
+          {label:"Assigned",value:s.assignedLeads||0,color:"#009149"},
+          {label:"Unassigned",value:s.unassignedLeads||0,color:"#e2001a"},
+          {label:"Connected",value:s.connectedCount||0,color:"#0066b3"},
+          {label:"Callbacks",value:s.callbackCount||0,color:"#ffc600"},
+          {label:"Lineups",value:lineupCount,color:"#009149",highlight:true},
+          {label:"CV Awaited",value:cvAwaitedCount,color:"#854d0e",highlight:"yellow"},
+        ].map(k=>(
+          <div key={k.label} className="t-kpi" style={k.highlight==="yellow"?{background:"#fefce8"}:k.highlight?{background:"#f0fff7"}:{}}>
+            <div className="t-kpi-accent" style={{background:k.color}}/>
+            <div className="t-kpi-label">{k.label}</div>
+            <div className="t-kpi-value" style={k.highlight?{color:k.color}:{}}>{k.value}</div>
+          </div>
+        ))}
+      </div>
+      {data.timeSeries && data.timeSeries.length>0 && RECHARTS_OK && (
+        <div className="t-board">
+          <div className="t-board-hd"><h2 className="t-board-hd-title">Calls Over Time</h2></div>
+          <div style={{padding:"16px 20px"}}>
+            <R.ResponsiveContainer width="100%" height={220}>
+              <R.LineChart data={data.timeSeries}>
+                <R.CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
+                <R.XAxis dataKey="day" fontSize={10} tick={{fill:"#888",fontFamily:"var(--fm)"}}/>
+                <R.YAxis fontSize={10} tick={{fill:"#888",fontFamily:"var(--fm)"}}/>
+                <R.Tooltip contentStyle={{border:"1.5px solid #0a0a0a",borderRadius:0,fontSize:11}}/>
+                <R.Legend/>
+                <R.Line type="monotone" dataKey="calls" stroke="#e2001a" strokeWidth={2} dot={false}/>
+                <R.Line type="monotone" dataKey="qualified" stroke="#009149" strokeWidth={2} dot={false}/>
+              </R.LineChart>
+            </R.ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {user && (user.role==="admin"||user.role==="super_admin") && data.teamBreakdown && data.teamBreakdown.length>0 && (
+        <div className="t-board">
+          <div className="t-board-hd"><h2 className="t-board-hd-title">Team Breakdown</h2><span className="t-board-meta">{data.teamBreakdown.length} teams</span></div>
+          <div className="team-breakdown-grid">
+            {data.teamBreakdown.map(team=>(
+              <div key={team.teamId||team.teamName} className="team-bd-card">
+                <div className="team-bd-name">{team.teamName||"Unnamed Team"}</div>
+                <div className="team-bd-kpis" style={{gridTemplateColumns:"repeat(7,1fr)"}}>
+                  {[
+                    {l:"Calls",v:team.totalCalls||0,c:"#0066b3"},
+                    {l:"Minutes",v:team.totalMinutes||0,c:"#ffc600"},
+                    {l:"QL",v:team.qualifiedLeads||0,c:"#009149"},
+                    {l:"Connected",v:team.connectedCount||0,c:"#0369a1"},
+                    {l:"Lined Up",v:team.lineupCount||0,c:"#5b21b6"},
+                    {l:"CV Awaited",v:team.cvAwaitedCount||0,c:"#92400e"},
+                    {l:"Conversion",v:(team.conversionRate||0)+"%",c:"#e2001a"},
+                  ].map(k=>(
+                    <div key={k.l} className="team-bd-kpi">
+                      <div className="team-bd-kpi-v" style={{color:k.c}}>{k.v}</div>
+                      <div className="team-bd-kpi-l">{k.l}</div>
+                    </div>
+                  ))}
+                </div>
+                {team.agents && team.agents.length>0 && (
+                  <div className="team-bd-agents">
+                    {team.agents.map(a=>(
+                      <div key={a.email} className="team-bd-agent-row">
+                        <span className="team-bd-agent-name">{a.name||a.email}</span>
+                        <span className="team-bd-agent-chip chip-calls">{a.totalCalls||0} calls</span>
+                        <span className="team-bd-agent-chip chip-min">{a.totalMinutes||0} min</span>
+                        <span className="team-bd-agent-chip chip-ql">{a.qualifiedLeads||0} QL</span>
+                        <span className="team-bd-agent-chip chip-conn">{a.connectedCount||0} conn</span>
+                        <span className="team-bd-agent-chip chip-lineup">{a.lineupCount||0} lineup</span>
+                        <span className="team-bd-agent-chip chip-cv">{a.cvAwaited||0} CV</span>
+                        {(a.emptyCallStatus||0)>0 && <span className="team-bd-agent-chip chip-empty">{a.emptyCallStatus} empty</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// LEADS VIEW — with debounced search + client-side cache
+// ─────────────────────────────────────────────────────────────
+function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter }) {
+  const [selAgent, setSelAgent] = useState(initialFilter?.agentCode || (agents[0]?.agentCode||""));
+  const [leads, setLeads] = useState([]);
+  const [headers, setHeaders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchInput, setSearchInput] = useState("");
+  const search = useDebounce(searchInput, 300); // debounce search
+  const [unassignedOnly, setUnassignedOnly] = useState(false);
+  const [reqFilter, setReqFilter] = useState(initialFilter?.requestId || "");
+  const [busy, setBusy] = useState(false);
+  const [selected, setSelected] = useState(new Set());
+  const [bulkRecruiter, setBulkRecruiter] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState(null);
+  const [selTeam, setSelTeam] = useState("");
+
+  // Team filter by member emails
+  const teamFilterEmails = useMemo(() => {
+    if (!selTeam) return null;
+    const teamMembers = users.filter(u => u.teamId === selTeam || u.team === selTeam && (u.role === "recruiter" || u.role === "team_lead"));
+    return new Set(teamMembers.map(u => u.email.toLowerCase()));
+  }, [selTeam, users]);
+
+  async function refresh() {
+    if(!selAgent){setLeads([]);setHeaders([]);setLoading(false);return;}
+    setLoading(true);
+    const r = await fetchLeadsWithCache(selAgent, {
+      search,
+      unassignedOnly,
+      requestId: reqFilter||undefined
+    });
+    setLoading(false);
+    if(r.ok){setLeads(r.leads||[]);setHeaders(r.headers||[]);setLastRefresh(new Date());}
+  }
+
+  useEffect(()=>{ refresh(); },[selAgent, search, unassignedOnly, reqFilter]);
+  useEffect(()=>{
+    if(!selAgent) return;
+    const t = setInterval(()=>{ invalidateLeadCache(selAgent); refresh(); }, 5*60*1000);
+    return ()=>clearInterval(t);
+  },[selAgent, search, unassignedOnly, reqFilter]);
+
+  const fixedCols = ["Callee Name","Mobile Number","Assigned To Email","Call Status","Feedback","Selection Process","Remarks","Recording URL"];
+  const dateCols = headers.filter(h => isDateCol(h) && !fixedCols.includes(h));
+  const outCols = headers.filter(h=>h.startsWith("out."));
+  const inCols = headers.filter(h=>h.startsWith("in."));
+  const shownHeaders = [...fixedCols.filter(h=>headers.includes(h)), ...dateCols, ...outCols, ...inCols];
+
+  const { filters, filtered: rawFiltered, colValues, setColFilter, clearFilters } = useTableFilters(leads, shownHeaders);
+  const hasFilters = Object.keys(filters).length > 0;
+
+  // Apply team filter on top of column filters
+  const filteredLeads = useMemo(() => {
+    let result = rawFiltered;
+    if (teamFilterEmails) {
+      result = result.filter(l => {
+        const ae = String(l["Assigned To Email"]||"").toLowerCase();
+        return !ae || teamFilterEmails.has(ae);
+      });
+    }
+    return result;
+  }, [rawFiltered, teamFilterEmails]);
+
+  const canBulkAssign = user.role!=="recruiter";
+  const [recruiters, setRecruiters] = useState([]);
+  useEffect(() => {
+    if (!canBulkAssign) return;
+    api("listUsers", {}).then(r => {
+      if (r.ok) setRecruiters((r.users || []).filter(u => u.role === "recruiter" && u.active));
+    });
+  }, []);
+
+  function toggleAll() {
+    if(selected.size===filteredLeads.length) setSelected(new Set());
+    else setSelected(new Set(filteredLeads.map(l=>l["Call ID"])));
+  }
+  function toggleRow(id) { const s=new Set(selected); s.has(id)?s.delete(id):s.add(id); setSelected(s); }
+
+  async function assign(lead, email) {
+    setBusy(true);
+    await api("assignLead",{agentCode:selAgent,callId:lead["Call ID"],recruiterEmail:email});
+    invalidateLeadCache(selAgent);
+    setBusy(false); refresh();
+  }
+  async function bulkAssign() {
+    if(!bulkRecruiter||selected.size===0) return;
+    setBulkBusy(true);
+    for(const callId of selected) { await api("assignLead",{agentCode:selAgent,callId,recruiterEmail:bulkRecruiter}); }
+    invalidateLeadCache(selAgent);
+    setBulkBusy(false); setSelected(new Set()); setBulkRecruiter(""); refresh();
+  }
+
+  async function handleCellChange(callId, field, value) {
+    await api("updateLead",{agentCode:selAgent,callId,fields:{[field]:value}});
+    invalidateLeadCache(selAgent);
+  }
+
+  function renderCell(h, val, lead) {
+    const strVal = String(val??"")||"";
+    if(h==="Recording URL") return <RecBtn url={strVal}/>;
+    if(isDateCol(h)) return <DateCell value={strVal}/>;
+    if(h==="Call Status") return <StatusSelect options={CALL_STATUS_OPTIONS} value={strVal} onChange={v=>handleCellChange(lead["Call ID"],"Call Status",v)}/>;
+    if(h==="Feedback") return <StatusSelect options={FEEDBACK_OPTIONS} value={strVal} onChange={v=>handleCellChange(lead["Call ID"],"Feedback",v)}/>;
+    if(h==="Selection Process") return <StatusSelect options={SELECTION_OPTIONS} value={strVal} onChange={v=>handleCellChange(lead["Call ID"],"Selection Process",v)}/>;
+    if(h==="Remarks") return <RemarksCell name={String(lead["Callee Name"]||"")} value={strVal} onSave={v=>handleCellChange(lead["Call ID"],"Remarks",v)}/>;
+    if(!strVal) return <span style={{color:"#ccc"}}>—</span>;
+    if(h.startsWith("out.")||h.startsWith("in.")) return <div className="out-cell" title={strVal}>{strVal}</div>;
+    if(h==="Assigned To Email") { const rec = recruiters.find(r=>r.email.toLowerCase()===strVal.toLowerCase()); return <span style={{fontSize:11,color:"var(--muted)"}}>{rec ? rec.name||strVal : strVal}</span>; }
+    if(h==="Mobile Number") return <span className="t-mono">{strVal}</span>;
+    return <span style={{fontSize:12}}>{strVal}</span>;
+  }
+
+  function colLabel(h) {
+    if(h==="Recording URL") return "Recording";
+    if(h.startsWith("out.")) return h.slice(4);
+    if(h.startsWith("in.")) return "↓"+h.slice(3);
+    return h;
+  }
+
+  return (
+    <div className="t-fade" style={{display:"flex",flexDirection:"column",minHeight:"calc(100vh - 48px)"}}>
+      <div className="t-mast">
+        <div>
+          <div className="t-mast-title">Leads</div>
+          <div className="t-mast-sub" style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+            <span>{filteredLeads.length} leads {hasFilters && `(filtered)`}</span>
+            <span className="refresh-badge"><span className="refresh-dot"/>Auto-refresh 5m</span>
+            {lastRefresh && <span style={{fontSize:9,color:"rgba(255,255,255,.3)"}}>Last: {lastRefresh.toLocaleTimeString()}</span>}
+            {reqFilter && <>
+              <span style={{fontFamily:"var(--fm)",fontSize:10,background:"rgba(255,255,255,.1)",padding:"1px 5px"}}>campaign: {reqFilter.slice(-12)}</span>
+              <button onClick={()=>{setReqFilter("");onClearFilter&&onClearFilter();}} style={{background:"rgba(255,255,255,.15)",border:"none",color:"rgba(255,255,255,.8)",fontSize:9,cursor:"pointer",padding:"1px 6px",fontFamily:"var(--fd)",fontWeight:700,letterSpacing:".1em"}}>CLEAR ×</button>
+            </>}
+          </div>
+        </div>
+        <div className="t-mast-r">
+          {/* Team filter — white bg */}
+          {teams && teams.length>0 && (
+            <select className="mast-select" value={selTeam} onChange={e=>setSelTeam(e.target.value)} style={{minWidth:130}}>
+              <option value="">All Teams</option>
+              {teams.map(t=><option key={t.id} value={t.name}>{t.name}</option>)}
+            </select>
+          )}
+          <AgentPicker agents={agents} value={selAgent} onChange={v=>{setSelAgent(v);setSelected(new Set());}}/>
+          <input className="t-input" value={searchInput} onChange={e=>setSearchInput(e.target.value)} placeholder="Search name / mobile…" style={{width:180,background:"rgba(255,255,255,.08)",borderColor:"rgba(255,255,255,.2)",color:"#fff",fontSize:12}}/>
+          {canBulkAssign && (
+            <label style={{fontSize:10,display:"flex",alignItems:"center",gap:5,color:"rgba(255,255,255,.6)",whiteSpace:"nowrap",fontFamily:"var(--fd)",fontWeight:700,letterSpacing:".06em",textTransform:"uppercase",cursor:"pointer"}}>
+              <input type="checkbox" style={{width:"auto"}} checked={unassignedOnly} onChange={e=>setUnassignedOnly(e.target.checked)}/>
+              Unassigned
+            </label>
+          )}
+          {hasFilters && <button className="t-btn t-btn-sm" style={{background:"var(--yellow)",color:"var(--black)",border:"none"}} onClick={clearFilters}>Clear Filters ×</button>}
+        </div>
+      </div>
+
+      <div style={{flex:1,background:"var(--white)"}}>
+        {!selAgent && <div className="t-empty">Pick an agent to view leads.</div>}
+        {selAgent && loading && <div style={{padding:60,textAlign:"center"}}><Spin/></div>}
+        {selAgent && !loading && filteredLeads.length===0 && <div className="t-empty">No leads found.</div>}
+        {selAgent && !loading && leads.length>0 && (
+          <>
+            {canBulkAssign && selected.size>0 && (
+              <div className="t-bulk">
+                <span style={{fontFamily:"var(--fd)",fontWeight:900,fontSize:11,letterSpacing:".1em"}}>{selected.size} SELECTED</span>
+                <select value={bulkRecruiter} onChange={e=>setBulkRecruiter(e.target.value)} style={{background:"#ffffff",border:"1.5px solid var(--black)",color:"var(--black)",padding:"5px 8px",fontSize:11,fontFamily:"var(--fb)",minWidth:180}}>
+                  <option value="">— Assign to recruiter —</option>
+                  {recruiters.map(u=><option key={u.email} value={u.email}>{u.name||u.email}</option>)}
+                </select>
+                <button className="t-btn t-btn-green t-btn-sm" onClick={bulkAssign} disabled={!bulkRecruiter||bulkBusy}>{bulkBusy?<Spin white/>:"Assign"}</button>
+                <button className="t-btn t-btn-sm" onClick={()=>setSelected(new Set())} style={{color:"#fff",background:"transparent",border:"1px solid rgba(255,255,255,.3)"}}>Clear</button>
+              </div>
+            )}
+            <div className="t-tbl-wrap">
+              <table className="t-tbl">
+                <thead>
+                  <tr>
+                    {canBulkAssign && <th style={{width:32,textAlign:"center"}}><input type="checkbox" onChange={toggleAll} checked={selected.size===filteredLeads.length&&filteredLeads.length>0} style={{width:13,height:13}}/></th>}
+                    {shownHeaders.map(h=><th key={h} style={h==="Feedback"?{minWidth:200}:{}}>{colLabel(h)}</th>)}
+                    {canBulkAssign && <th>Assign</th>}
+                  </tr>
+                  <tr className="filter-row">
+                    {canBulkAssign && <td/>}
+                    {shownHeaders.map(h=>(
+                      <td key={h} style={{padding:"2px 3px"}}>
+                        <ExcelColFilter header={colLabel(h)} values={colValues[h]||[]} selected={filters[h] || null} onChange={(vals)=>setColFilter(h,vals)}/>
+                      </td>
+                    ))}
+                    {canBulkAssign && <td/>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredLeads.map((lead,i)=>{
+                    const callId = lead["Call ID"];
+                    const isSel = selected.has(callId);
+                    return (
+                      <tr key={i} className={isSel?"selected":""}>
+                        {canBulkAssign && <td style={{textAlign:"center",width:32}}><input type="checkbox" checked={isSel} onChange={()=>toggleRow(callId)} style={{width:13,height:13}}/></td>}
+                        {shownHeaders.map(h=>(
+                          <td key={h} style={h==="Feedback"?{minWidth:200}:{}}>{renderCell(h, lead[h], lead)}</td>
+                        ))}
+                        {canBulkAssign && <td><AssignCell lead={lead} recruiters={recruiters} onAssign={assign} busy={busy}/></td>}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// TRIGGER CAMPAIGN
+// ─────────────────────────────────────────────────────────────
+function UploadView({ user, agents, refreshMe }) {
+  const [selAgent,setSelAgent]=useState(agents[0]?.agentCode||"");
+  const [file,setFile]=useState(null); const [fileHeaders,setFileHeaders]=useState([]);
+  const [rows,setRows]=useState([]); const [mapping,setMapping]=useState({});
+  const [busy,setBusy]=useState(false); const [result,setResult]=useState(null); const [err,setErr]=useState("");
+  const [dragging,setDragging]=useState(false);
+  const fileRef=useRef(null);
+  const agent=agents.find(a=>a.agentCode===selAgent);
+  const required=useMemo(()=>agent?["callee_name","mobile_number"].concat(agent.customVariables||[]):[],[agent]);
+
+  function autoMatch(cols,fields){
+    const norm=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
+    const byNorm={}; cols.forEach(c=>{byNorm[norm(c)]=c;});
+    const m={};
+    const aliases={callee_name:["name","fullname","calleename","candidatename","firstname"],mobile_number:["mobile","phone","phonenumber","mobilenumber","contact","number","cell"]};
+    fields.forEach(f=>{
+      const fn=norm(f);
+      if(byNorm[fn]){m[f]=byNorm[fn];return;}
+      const al=aliases[f]||[];
+      for(const a of al){if(byNorm[a]){m[f]=byNorm[a];return;}}
+      for(const raw of cols){if(norm(raw).includes(fn)||fn.includes(norm(raw))){m[f]=raw;return;}}
+    });
+    return m;
+  }
+  async function handleFile(f){
+    if(!f||!agent) return;
+    setErr(""); setResult(null); setFile(f);
+    try{
+      const buf=await f.arrayBuffer();
+      const wb=XLSX.read(buf,{type:"array"});
+      const sheet=wb.Sheets[wb.SheetNames[0]];
+      const json=XLSX.utils.sheet_to_json(sheet,{defval:"",raw:false});
+      if(!json.length){setErr("File is empty.");return;}
+      const cols=Object.keys(json[0]);
+      setFileHeaders(cols); setRows(json); setMapping(autoMatch(cols,required));
+    }catch(e){setErr("Could not read file: "+e.message);}
+  }
+  async function submit(){
+    if(!agent||!mapping.callee_name||!mapping.mobile_number){setErr("Map both Callee Name and Mobile Number.");return;}
+    setBusy(true); setErr("");
+    const payload=rows.map(r=>{
+      const custom_data={};
+      (agent.customVariables||[]).forEach(k=>{if(mapping[k]&&r[mapping[k]]!==undefined)custom_data[k]=String(r[mapping[k]]??"");});
+      const raw={}; fileHeaders.forEach(h=>{raw[h]=r[h];});
+      return {callee_name:String(r[mapping.callee_name]||"").trim(),mobile_number:String(r[mapping.mobile_number]||"").trim(),custom_data,raw};
+    }).filter(r=>r.callee_name&&r.mobile_number);
+    if(!payload.length){setBusy(false);setErr("No valid rows after mapping.");return;}
+    const r=await api("uploadContacts",{agentCode:selAgent,rows:payload});
+    setBusy(false);
+    if(!r.ok) return setErr(r.message||r.error);
+    setResult(r); refreshMe&&refreshMe();
+  }
+  function reset(){setFile(null);setFileHeaders([]);setRows([]);setMapping({});setResult(null);setErr("");if(fileRef.current)fileRef.current.value="";}
+  const validRows = useMemo(()=>rows.filter(r=>String(r[mapping.callee_name]||"").trim()&&String(r[mapping.mobile_number]||"").trim()).length,[rows,mapping]);
+
+  return (
+    <div className="t-fade">
+      <div className="t-mast">
+        <div><div className="t-mast-title">Trigger Campaign</div><div className="t-mast-sub">Upload contacts &amp; start AI calling</div></div>
+      </div>
+      {agents.length===0 && <div style={{padding:32}}><Alert type="info">No agents assigned to your team yet.</Alert></div>}
+      {agents.length>0 && (
+        <div className="tc-wrap">
+          <div className="tc-step">
+            <div className="tc-step-num">1</div>
+            <div className="tc-step-body">
+              <div className="tc-step-label">Select Agent</div>
+              <select className="t-select" value={selAgent} onChange={v=>{setSelAgent(v.target.value);reset();}} style={{minWidth:280,fontSize:13}}>
+                {agents.map(a=><option key={a.agentCode} value={a.agentCode}>{a.displayName||a.agentCode}</option>)}
+              </select>
+              {agent && (
+                <div className="tc-agent-card">
+                  <div className="tc-agent-name">{agent.displayName}</div>
+                  <div className="tc-agent-desc">{agent.description||<em style={{color:"#aaa"}}>No description</em>}</div>
+                  <div className="tc-req-row">
+                    <span className="tc-req-label">Required fields:</span>
+                    <span className="t-pill t-pill-blue">callee_name</span>
+                    <span className="t-pill t-pill-blue">mobile_number</span>
+                    {(agent.customVariables||[]).map(v=><span key={v} className="t-pill t-pill-gray">{v}</span>)}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          {selAgent && !file && !result && (
+            <div className="tc-step">
+              <div className="tc-step-num">2</div>
+              <div className="tc-step-body">
+                <div className="tc-step-label">Upload Excel / CSV</div>
+                <div className={"tc-drop-zone"+(dragging?" active":"")} onDrop={e=>{e.preventDefault();setDragging(false);handleFile(e.dataTransfer.files[0]);}} onDragOver={e=>{e.preventDefault();setDragging(true);}} onDragLeave={()=>setDragging(false)} onClick={()=>fileRef.current&&fileRef.current.click()}>
+                  <svg className="tc-drop-icon" viewBox="0 0 40 40" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="8" width="32" height="28" rx="2"/><path d="M14 20h12M20 14v12"/></svg>
+                  <div className="tc-drop-title">{dragging?"Drop it!":"Drop .xlsx, .xls or .csv"}</div>
+                  <div className="tc-drop-sub">or click to browse files</div>
+                  <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={e=>handleFile(e.target.files[0])}/>
+                </div>
+                {err&&<div style={{marginTop:8}}><Alert type="error">{err}</Alert></div>}
+              </div>
+            </div>
+          )}
+          {selAgent && file && !result && (
+            <div className="tc-step">
+              <div className="tc-step-num">3</div>
+              <div className="tc-step-body">
+                <div className="tc-step-label">Map Columns</div>
+                <div className="tc-file-info">
+                  <div><div className="tc-file-name">{file.name}</div><div className="tc-file-rows">{rows.length} rows detected · {validRows} valid</div></div>
+                  <button className="t-btn t-btn-outline t-btn-sm" onClick={reset}>Change file</button>
+                </div>
+                <table className="tc-map-table">
+                  <thead><tr><th>Portal Field</th><th>Your Column</th><th>Status</th></tr></thead>
+                  <tbody>
+                    {required.map(f=>{
+                      const isReq=f==="callee_name"||f==="mobile_number";
+                      const src=mapping[f]||"";
+                      return (
+                        <tr key={f}>
+                          <td><div className="tc-map-field">{f}</div><div className="tc-map-req">{isReq?"required":"optional"}</div></td>
+                          <td><select className="t-select" style={{width:"100%",fontSize:11}} value={src} onChange={e=>setMapping({...mapping,[f]:e.target.value})}><option value="">— not mapped —</option>{fileHeaders.map(h=><option key={h} value={h}>{h}</option>)}</select></td>
+                          <td style={{width:80,textAlign:"center"}}>{src?<span className="badge-m">✓ mapped</span>:(isReq?<span className="badge-u">required</span>:<span className="badge-o">optional</span>)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {err&&<div style={{marginTop:8}}><Alert type="error">{err}</Alert></div>}
+                <button onClick={submit} disabled={busy||!mapping.callee_name||!mapping.mobile_number||validRows===0} className="tc-trigger-btn">{busy?<><Spin white/> Triggering…</>:<>▶ Trigger {validRows} Calls</>}</button>
+                <button onClick={reset} className="t-btn t-btn-outline" style={{width:"100%",marginTop:8}}>Cancel</button>
+              </div>
+            </div>
+          )}
+          {result && (
+            <div className="tc-result-card">
+              <div className="tc-result-title">✓ Campaign Triggered!</div>
+              <div style={{fontSize:13,color:"var(--green)",fontFamily:"var(--fd)",fontWeight:700,marginBottom:8}}>{result.contactsAccepted} of {result.contactsSubmitted} calls accepted</div>
+              <div style={{fontSize:11,color:"#444",marginBottom:4}}>Est. {result.estimatedMinutes} min</div>
+              <div style={{fontFamily:"var(--fm)",fontSize:10,color:"var(--muted)",marginBottom:14}}>Request ID: {result.requestId}</div>
+              <button onClick={reset} className="t-btn t-btn-black">Trigger Another Campaign</button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// CAMPAIGNS VIEW — team filter fixed
+// ─────────────────────────────────────────────────────────────
+function CampaignsView({ agents, user, teams, onViewLeads }) {
+  const [selAgent,setSelAgent]=useState("");
+  const [selTeam,setSelTeam]=useState("");
+  const [rows,setRows]=useState([]); const [loading,setLoading]=useState(true);
+  const [openCampaign,setOpenCampaign]=useState(null);
+  const [campaignTab,setCampaignTab]=useState("qualified");
+
+  useEffect(()=>{
+    (async()=>{ setLoading(true); const r=await api("getCampaigns",{agentCode:selAgent}); setLoading(false); if(r.ok)setRows(r.campaigns||[]); })();
+  },[selAgent]);
+
+  if(openCampaign) {
+    return <CampaignDetail campaign={openCampaign} agents={agents} tab={campaignTab} setTab={setCampaignTab} onBack={()=>setOpenCampaign(null)} onViewLeads={onViewLeads}/>;
+  }
+
+  // Fix: filter by team using triggeredByTeam field
+  const displayRows = selTeam
+    ? rows.filter(r => r.triggeredByTeam === selTeam || r.triggeredByTeamId === selTeam || (teams.find(t=>t.id===selTeam||t.name===selTeam)?.name) === r.triggeredByTeam)
+    : rows;
+
+  const live=displayRows.filter(r=>r.status==="IN_PROGRESS").length;
+  const done=displayRows.filter(r=>r.status==="COMPLETED").length;
+  const totalQual=displayRows.reduce((a,r)=>a+(r.qualified||0),0);
+
+  return (
+    <div className="t-fade">
+      <div className="t-mast">
+        <div>
+          <div className="t-mast-title">Campaigns</div>
+          <div className="t-mast-sub">{displayRows.length} campaigns · {live} running · {done} completed</div>
+        </div>
+        <div className="t-mast-r">
+          <AgentPicker agents={agents} value={selAgent} onChange={setSelAgent} allowAll/>
+        </div>
+      </div>
+      {/* Team tabs — white bg black text */}
+      {teams && teams.length>0 && (user.role==="admin"||user.role==="super_admin") && (
+        <div style={{display:"flex",gap:0,borderBottom:"2px solid var(--black)",background:"#fff",overflowX:"auto"}}>
+          <div className={"t-tab"+(selTeam===""?" active":"")} onClick={()=>setSelTeam("")}>All Teams</div>
+          {teams.map(t=><div key={t.id||t.name} className={"t-tab"+(selTeam===(t.name||t.id)?" active":"")} onClick={()=>setSelTeam(t.name||t.id)}>{t.name}</div>)}
+        </div>
+      )}
+      <div className="t-kpis" style={{gridTemplateColumns:"repeat(4,1fr)"}}>
+        {[{label:"Running",value:live,color:"#e2001a"},{label:"Completed",value:done,color:"#009149"},{label:"Total Candidates",value:displayRows.reduce((a,r)=>a+(r.contactsCount||0),0),color:"#0066b3"},{label:"Total Qualified",value:totalQual,color:"#ffc600"}].map(k=>(
+          <div key={k.label} className="t-kpi">
+            <div className="t-kpi-accent" style={{background:k.color}}/>
+            <div className="t-kpi-label">{k.label}</div>
+            <div className="t-kpi-value">{k.value}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{padding:16,background:"var(--bg)"}}>
+        {loading ? <div style={{padding:60,textAlign:"center"}}><Spin/></div> : displayRows.length===0 ? (
+          <div className="t-empty">No campaigns yet{selTeam?" for this team":""}.</div>
+        ) : displayRows.map(c=>{
+          const pct = c.contactsCount>0 ? Math.round(((c.completed||0)+(c.notConnected||0)+(c.failed||0))/c.contactsCount*100) : 0;
+          const isLive = c.status==="IN_PROGRESS";
+          return (
+            <div key={c.requestId} className="c-card" onClick={()=>{setOpenCampaign(c);setCampaignTab("qualified");}}>
+              <div className="c-card-hd">
+                <Disc name={c.agentName||c.agentCode}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                    <span style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:13}}>{c.campaignName||c.requestId.slice(-12)}</span>
+                    <StatusPill status={c.status}/>
+                    {c.triggeredByTeam && <span className="t-pill t-pill-blue">{c.triggeredByTeam}</span>}
+                  </div>
+                  <div style={{fontFamily:"var(--fm)",fontSize:10,color:"var(--muted)",marginTop:2}}>
+                    {c.agentName||c.agentCode} · {c.triggeredBy} · {c.triggeredAt?new Date(c.triggeredAt).toLocaleString():""}
+                  </div>
+                  <div style={{marginTop:6}}>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"var(--muted)",marginBottom:2,fontFamily:"var(--fm)"}}>
+                      <span>{pct}% done</span><span>{(c.completed||0)+(c.notConnected||0)+(c.failed||0)} / {c.contactsCount}</span>
+                    </div>
+                    <div className="t-bar"><div className={"t-bar-fill"+(pct===100?" g":isLive?" r":"")} style={{width:pct+"%"}}/></div>
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+                  {(c.qualified||0)>0 && <button className="t-btn t-btn-outline t-btn-sm" onClick={e=>{e.stopPropagation();onViewLeads&&onViewLeads(c.agentCode,c.requestId);}}>View Leads →</button>}
+                </div>
+              </div>
+              <div className="c-card-stats">
+                {[{l:"Contacts",v:c.contactsCount},{l:"Completed",v:c.completed||0},{l:"Not Connected",v:c.notConnected||0},{l:"Failed",v:c.failed||0},{l:"Qualified",v:c.qualified||0,highlight:true},{l:"Minutes",v:c.actualMinutes||0}].map(s=>(
+                  <div key={s.l} className="c-stat" style={s.highlight?{background:"#f0fff7",border:"1px solid #6ee7b7"}:{}}>
+                    <div className="c-stat-v" style={s.highlight?{color:"var(--green)"}:{}}>{s.v}</div>
+                    <div className="c-stat-l">{s.l}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// CAMPAIGN DETAIL
+// ─────────────────────────────────────────────────────────────
+function CampaignDetail({ campaign, agents, tab, setTab, onBack, onViewLeads }) {
+  return (
+    <div className="t-fade">
+      <div className="t-mast">
+        <div>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <button className="t-btn t-btn-outline t-btn-sm" onClick={onBack} style={{color:"rgba(255,255,255,.7)",borderColor:"rgba(255,255,255,.3)",background:"transparent"}}>← Back</button>
+            <div className="t-mast-title">{campaign.campaignName||campaign.requestId.slice(-12)}</div>
+            <StatusPill status={campaign.status}/>
+          </div>
+          <div className="t-mast-sub">{campaign.agentName||campaign.agentCode} · {campaign.triggeredBy} · {campaign.triggeredAt?new Date(campaign.triggeredAt).toLocaleString():""}</div>
+        </div>
+        <div className="c-card-stats" style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:4,margin:0}}>
+          {[{l:"Contacts",v:campaign.contactsCount},{l:"Completed",v:campaign.completed||0},{l:"Not Conn",v:campaign.notConnected||0},{l:"Failed",v:campaign.failed||0},{l:"Qualified",v:campaign.qualified||0,h:true},{l:"Mins",v:campaign.actualMinutes||0}].map(s=>(
+            <div key={s.l} style={{textAlign:"center",padding:"6px 8px",background:s.h?"rgba(0,145,73,.15)":"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)"}}>
+              <div style={{fontFamily:"var(--fd)",fontWeight:900,fontSize:18,color:s.h?"#4ade80":"#fff"}}>{s.v}</div>
+              <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:8,letterSpacing:".15em",textTransform:"uppercase",color:"rgba(255,255,255,.45)",marginTop:1}}>{s.l}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="t-tabs">
+        <div className={"t-tab"+(tab==="qualified"?" active":"")} onClick={()=>setTab("qualified")}>Qualified Leads ({campaign.qualified||0})</div>
+        <div className={"t-tab"+(tab==="master"?" active":"")} onClick={()=>setTab("master")}>Master Tracker ({campaign.completed||0} completed)</div>
+        <div className={"t-tab"+(tab==="notConnected"?" active":"")} onClick={()=>setTab("notConnected")}>Not Connected ({campaign.notConnected||0})</div>
+      </div>
+      {tab==="qualified" && <CampaignQualifiedTab campaign={campaign}/>}
+      {tab==="master" && <CampaignMasterTab campaign={campaign}/>}
+      {tab==="notConnected" && <CampaignNotConnectedTab campaign={campaign}/>}
+    </div>
+  );
+}
+
+function CampaignQualifiedTab({ campaign }) {
+  const [leads,setLeads]=useState([]); const [headers,setHeaders]=useState([]); const [loading,setLoading]=useState(true);
+  useEffect(()=>{
+    (async()=>{
+      setLoading(true);
+      const r=await api("getLeads",{agentCode:campaign.agentCode, filter:{requestId:campaign.requestId}});
+      setLoading(false);
+      if(r.ok){setLeads(r.leads||[]);setHeaders(r.headers||[]);}
+    })();
+  },[campaign.requestId]);
+
+  const fixedCols = ["Callee Name","Mobile Number","Assigned To Email","Call Status","Feedback","Selection Process","Remarks","Recording URL"];
+  const dateCols = headers.filter(h => isDateCol(h) && !fixedCols.includes(h));
+  const outCols = headers.filter(h=>h.startsWith("out."));
+  const inCols = headers.filter(h=>h.startsWith("in."));
+  const shownHeaders = [...fixedCols.filter(h=>headers.includes(h)), ...dateCols, ...outCols, ...inCols];
+  const { filters, filtered, colValues, setColFilter, clearFilters } = useTableFilters(leads, shownHeaders);
+  const hasFilters = Object.keys(filters).length > 0;
+
+  function colLabel(h) {
+    if(h==="Recording URL") return "Recording";
+    if(h.startsWith("out.")) return h.slice(4);
+    if(h.startsWith("in.")) return "↓"+h.slice(3);
+    return h;
+  }
+  function renderCell(h, val, lead) {
+    const strVal = String(val??"")||"";
+    if(h==="Recording URL") return <RecBtn url={strVal}/>;
+    if(isDateCol(h)) return <DateCell value={strVal}/>;
+    if(!strVal) return <span style={{color:"#ccc"}}>—</span>;
+    if(h==="Remarks") return <RemarksCell name={String(lead?.["Callee Name"]||"")} value={strVal} readOnly/>;
+    if(h==="Call Status"||h==="Feedback"||h==="Selection Process") return <LeadPill value={strVal}/>;
+    if(h.startsWith("out.")||h.startsWith("in.")) return <div className="out-cell" title={strVal}>{strVal}</div>;
+    if(h==="Mobile Number") return <span className="t-mono">{strVal}</span>;
+    return <span style={{fontSize:12}}>{strVal}</span>;
+  }
+
+  if(loading) return <div style={{padding:60,textAlign:"center"}}><Spin/></div>;
+  if(leads.length===0) return <div className="t-empty">No qualified leads for this campaign.</div>;
+  return (
+    <div>
+      {hasFilters && <div style={{padding:"6px 12px",background:"#fffbe0",borderBottom:"1px solid #ffc600",display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:11}}>Filtered: {filtered.length} of {leads.length}</span><button className="t-btn t-btn-sm t-btn-outline" onClick={clearFilters}>Clear ×</button></div>}
+      <div className="t-tbl-wrap">
+        <table className="t-tbl">
+          <thead>
+            <tr>{shownHeaders.map(h=><th key={h} style={h==="Feedback"?{minWidth:200}:{}}>{colLabel(h)}</th>)}</tr>
+            <tr className="filter-row">{shownHeaders.map(h=><td key={h} style={{padding:"2px 3px"}}><ExcelColFilter header={colLabel(h)} values={colValues[h]||[]} selected={filters[h]||null} onChange={v=>setColFilter(h,v)}/></td>)}</tr>
+          </thead>
+          <tbody>{filtered.map((lead,i)=><tr key={i}>{shownHeaders.map(h=><td key={h} style={h==="Feedback"?{minWidth:200}:{}}>{renderCell(h,lead[h],lead)}</td>)}</tr>)}</tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function CampaignMasterTab({ campaign }) {
+  const [rows,setRows]=useState([]); const [headers,setHeaders]=useState([]); const [loading,setLoading]=useState(true);
+  const [passingToQL, setPassingToQL] = useState(new Set());
+  const [passedToQL, setPassedToQL] = useState(new Set());
+  const [passMsg, setPassMsg] = useState("");
+
+  useEffect(()=>{
+    (async()=>{
+      setLoading(true);
+      const r=await api("getMasterTracker",{agentCode:campaign.agentCode, requestId:campaign.requestId});
+      setLoading(false);
+      if(r.ok){setRows(r.rows||[]);setHeaders(r.headers||[]);}
+      else {
+        const r2=await api("getLeads",{agentCode:campaign.agentCode, filter:{requestId:campaign.requestId}});
+        if(r2.ok){setRows(r2.leads||[]);setHeaders(r2.headers||[]);}
+      }
+    })();
+  },[campaign.requestId]);
+
+  async function passToQL(row) {
+    const callId = String(row["Call ID"] || "").trim();
+    if (!callId) return;
+    setPassingToQL(prev => new Set([...prev, callId]));
+    setPassMsg("");
+    const r = await api("passToQualifiedLeads", { agentCode: campaign.agentCode, callId });
+    setPassingToQL(prev => { const n = new Set(prev); n.delete(callId); return n; });
+    if (r.ok || r.error === "ALREADY_IN_QL") {
+      setPassedToQL(prev => new Set([...prev, callId]));
+      setPassMsg(r.error === "ALREADY_IN_QL" ? "Already in qualified leads." : "✓ Added to qualified leads!");
+    } else {
+      setPassMsg("Failed: " + (r.message || r.error));
+    }
+    setTimeout(()=>setPassMsg(""), 3000);
+  }
+
+  const metaCols = ["Call ID","Callee Name","Mobile Number","Status","Duration (Minutes)","Duration (Seconds)","Started At","Ended At","Answered By","Engagement Status","Call Ended By","Recording URL"];
+  const outCols = headers.filter(h=>h.startsWith("out."));
+  const inCols = headers.filter(h=>h.startsWith("in."));
+  const shownHeaders = [...metaCols.filter(h=>headers.includes(h)), ...inCols, ...outCols];
+  const { filters, filtered, colValues, setColFilter, clearFilters } = useTableFilters(rows, shownHeaders);
+  const hasFilters = Object.keys(filters).length > 0;
+
+  function colLabel(h) {
+    if(h==="Recording URL") return "Recording";
+    if(h.startsWith("out.")) return h.slice(4);
+    if(h.startsWith("in.")) return "↓"+h.slice(3);
+    return h;
+  }
+  function renderCell(h, val) {
+    const strVal = String(val??"")||"";
+    if(h==="Recording URL") return <RecBtn url={strVal}/>;
+    if(!strVal) return <span style={{color:"#ccc"}}>—</span>;
+    if(h.startsWith("out.")||h.startsWith("in.")) return <div className="out-cell" title={strVal}>{strVal}</div>;
+    if(h==="Status") return <StatusPill status={strVal}/>;
+    if(h==="Call ID"||h==="Mobile Number") return <span className="t-mono" style={{fontSize:10}}>{strVal}</span>;
+    if(h==="Started At"||h==="Ended At") return <span style={{fontSize:10,fontFamily:"var(--fm)",color:"var(--muted)"}}>{strVal?new Date(strVal).toLocaleString():""}</span>;
+    return <span style={{fontSize:12}}>{strVal}</span>;
+  }
+
+  if(loading) return <div style={{padding:60,textAlign:"center"}}><Spin/></div>;
+  if(rows.length===0) return <div className="t-empty">No completed calls for this campaign yet.</div>;
+  return (
+    <div>
+      <div style={{padding:"8px 14px",background:"#f0f5ff",borderBottom:"1px solid #c7d7f5",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+        <span style={{fontSize:11,color:"var(--blue)",fontFamily:"var(--fb)"}}>Showing <b>{filtered.length}</b> calls{hasFilters && <> (filtered from {rows.length})</>}</span>
+        {hasFilters && <button className="t-btn t-btn-sm t-btn-outline" onClick={clearFilters}>Clear filters ×</button>}
+        {passMsg && <span style={{fontSize:11,color:passMsg.startsWith("✓")?"var(--green)":"var(--red)",fontWeight:600,fontFamily:"var(--fb)"}}>{passMsg}</span>}
+        <span style={{marginLeft:"auto",fontSize:10,color:"var(--muted)",fontFamily:"var(--fb)"}}>Use <b>→ Pass to QL</b> to manually add a candidate to Qualified Leads</span>
+      </div>
+      <div className="t-tbl-wrap">
+        <table className="t-tbl">
+          <thead>
+            <tr>{shownHeaders.map(h=><th key={h}>{colLabel(h)}</th>)}<th style={{background:"#f0fff7",color:"var(--green)"}}>→ QL</th></tr>
+            <tr className="filter-row">{shownHeaders.map(h=><td key={h} style={{padding:"2px 3px"}}><ExcelColFilter header={colLabel(h)} values={colValues[h]||[]} selected={filters[h]||null} onChange={v=>setColFilter(h,v)}/></td>)}<td/></tr>
+          </thead>
+          <tbody>
+            {filtered.map((row,i)=>{
+              const callId = String(row["Call ID"] || "").trim();
+              const alreadyPassed = passedToQL.has(callId);
+              const isPassing = passingToQL.has(callId);
+              return (
+                <tr key={i}>
+                  {shownHeaders.map(h=><td key={h}>{renderCell(h,row[h])}</td>)}
+                  <td style={{background:"#fafff8",borderLeft:"1px solid #e0f5e8"}}>
+                    {alreadyPassed ? <span className="pass-ql-done">✓ In QL</span> : isPassing ? <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:"var(--muted)"}}><Spin/>Adding…</span> : <button className="pass-ql-btn" onClick={()=>passToQL(row)}><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M1 5h8M6 2l3 3-3 3"/></svg>Pass to QL</button>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function CampaignNotConnectedTab({ campaign }) {
+  const [rows,setRows]=useState([]); const [headers,setHeaders]=useState([]); const [loading,setLoading]=useState(true);
+  useEffect(()=>{
+    (async()=>{
+      setLoading(true);
+      const r=await api("getNotConnected",{agentCode:campaign.agentCode, requestId:campaign.requestId});
+      setLoading(false);
+      if(r.ok){setRows(r.rows||[]);setHeaders(r.headers||[]);}
+    })();
+  },[campaign.requestId]);
+
+  const shownHeaders = headers.length ? headers : ["Call ID","Callee Name","Mobile Number","Status","Retry Count","Retries Left","Next Retry Scheduled At","Last Updated"];
+  const { filters, filtered, colValues, setColFilter, clearFilters } = useTableFilters(rows, shownHeaders);
+  const hasFilters = Object.keys(filters).length > 0;
+
+  function renderCell(h, val) {
+    const strVal = String(val??"")||"";
+    if(!strVal) return <span style={{color:"#ccc"}}>—</span>;
+    if(h==="Status") return <StatusPill status={strVal}/>;
+    if(h==="Call ID"||h==="Mobile Number") return <span className="t-mono" style={{fontSize:10}}>{strVal}</span>;
+    if(h.includes("At")) return <span style={{fontSize:10,fontFamily:"var(--fm)",color:"var(--muted)"}}>{strVal}</span>;
+    return <span style={{fontSize:12}}>{strVal}</span>;
+  }
+
+  return (
+    <div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",borderBottom:"2px solid var(--black)",background:"#fff"}}>
+        {[{l:"Total Not Connected",v:campaign.notConnected||0},{l:"Total Failed",v:campaign.failed||0},{l:"Total Contacts",v:campaign.contactsCount||0}].map(s=>(
+          <div key={s.l} className="t-kpi"><div className="t-kpi-label">{s.l}</div><div className="t-kpi-value">{s.v}</div></div>
+        ))}
+      </div>
+      {loading && <div style={{padding:60,textAlign:"center"}}><Spin/></div>}
+      {!loading && rows.length===0 && <div className="t-empty">No not-connected data yet.</div>}
+      {!loading && rows.length>0 && (
+        <div>
+          {hasFilters && <div style={{padding:"6px 12px",background:"#fffbe0",borderBottom:"1px solid #ffc600",display:"flex",gap:8}}><span style={{fontSize:11}}>Filtered: {filtered.length}/{rows.length}</span><button className="t-btn t-btn-sm t-btn-outline" onClick={clearFilters}>Clear ×</button></div>}
+          <div className="t-tbl-wrap">
+            <table className="t-tbl">
+              <thead>
+                <tr>{shownHeaders.map(h=><th key={h}>{h}</th>)}</tr>
+                <tr className="filter-row">{shownHeaders.map(h=><td key={h} style={{padding:"2px 3px"}}><ExcelColFilter header={h} values={colValues[h]||[]} selected={filters[h]||null} onChange={v=>setColFilter(h,v)}/></td>)}</tr>
+              </thead>
+              <tbody>{filtered.map((row,i)=><tr key={i}>{shownHeaders.map(h=><td key={h}>{renderCell(h,row[h])}</td>)}</tr>)}</tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// AGENTS VIEW
+// ─────────────────────────────────────────────────────────────
+function AgentsView({ onChange }) {
+  const [agents,setAgents]=useState([]); const [loading,setLoading]=useState(true);
+  const [busy,setBusy]=useState(false); const [editing,setEditing]=useState(null); const [msg,setMsg]=useState("");
+  async function refresh(){ setLoading(true); const r=await api("listAgents",{}); setLoading(false); if(r.ok){setAgents(r.agents||[]);onChange&&onChange(r.agents||[]);} }
+  useEffect(()=>{refresh();},[]);
+  async function sync(){ setBusy(true); setMsg(""); const r=await api("syncAgents",{}); setBusy(false); if(!r.ok)return setMsg("Sync failed: "+(r.message||r.error)); setMsg("Synced "+r.synced+" agents."); refresh(); }
+  async function save(a){ const r=await api("upsertAgent",{agent:a}); if(!r.ok)return alert(r.message||r.error); setEditing(null); refresh(); }
+  async function toggleActive(a){ await api("upsertAgent",{agent:{agentCode:a.agentCode,active:!a.active}}); refresh(); }
+  const active=agents.filter(a=>a.active).length;
+  return (
+    <div className="t-fade">
+      <div className="t-mast">
+        <div><div className="t-mast-title">Agents</div><div className="t-mast-sub">{agents.length} total · {active} active</div></div>
+        <button onClick={sync} disabled={busy} className="t-btn t-btn-outline" style={{color:"var(--black)",borderColor:"var(--black)"}}>{busy?<Spin/>:"Sync from Hunar"}</button>
+      </div>
+      {msg && <div style={{padding:"10px 20px"}}><Alert type="info">{msg}</Alert></div>}
+      <div className="t-board">
+        <div className="t-board-hd"><h2 className="t-board-hd-title">All Agents</h2><span className="t-board-meta">{agents.length} agents</span></div>
+        {loading ? <div style={{padding:60,textAlign:"center"}}><Spin/></div> : agents.length===0 ? (
+          <div className="t-empty">No agents yet. Click <b>Sync from Hunar</b> to import.</div>
+        ) : (
+          <div className="t-tbl-wrap">
+            <table className="t-tbl">
+              <thead><tr><th>Agent</th><th>Code</th><th>Language</th><th>Input Fields</th><th>Qualification Rule</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody>
+                {agents.map(a=>{
+                  const rules = a.qualificationRules || (a.qualificationField ? [{field: a.qualificationField, keywords: a.qualificationValues||[]}] : []);
+                  return (
+                    <tr key={a.agentCode}>
+                      <td><div className="t-tbl nm">{a.displayName}</div><div className="t-tbl nm-sub">{a.description?.slice(0,60)}</div></td>
+                      <td><span className="t-mono">{a.agentCode}</span></td>
+                      <td style={{fontSize:11}}>{a.language}</td>
+                      <td>{(a.customVariables||[]).map(v=><span key={v} className="t-pill t-pill-gray" style={{marginRight:2,marginBottom:2}}>{v}</span>)}</td>
+                      <td style={{fontSize:11}}>
+                        {rules.length===0 ? <span style={{color:"var(--muted)"}}>not set</span> : rules.map((r,i)=>(
+                          <div key={i} style={{marginBottom:2}}>
+                            <span className="t-mono" style={{fontSize:10,color:"var(--blue)"}}>{r.field}</span>
+                            {r.keywords?.length>0 ? r.keywords.slice(0,3).map(k=><span key={k} className="t-pill t-pill-blue" style={{fontSize:8,marginLeft:3}}>~{k}</span>) : <span style={{color:"var(--muted)",fontSize:10}}> = any</span>}
+                            {r.keywords?.length>3 && <span style={{fontSize:9,color:"var(--muted)"}}>+{r.keywords.length-3}</span>}
+                          </div>
+                        ))}
+                      </td>
+                      <td>{a.active?<span className="t-pill t-pill-done">Active</span>:<span className="t-pill t-pill-arch">Inactive</span>}</td>
+                      <td>
+                        <div style={{display:"flex",gap:4}}>
+                          <button onClick={()=>setEditing(a)} className="t-btn t-btn-outline t-btn-sm">Edit</button>
+                          <button onClick={()=>toggleActive(a)} className="t-btn t-btn-outline t-btn-sm">{a.active?"Deactivate":"Activate"}</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      {editing && <AgentEditModal agent={editing} onSave={save} onClose={()=>setEditing(null)}/>}
+    </div>
+  );
+}
+
+function AgentEditModal({ agent, onSave, onClose }) {
+  const [a, setA] = useState({...agent});
+  const [qualRules, setQualRules] = useState(() => {
+    const rules = {};
+    if (agent.qualificationRules && Array.isArray(agent.qualificationRules) && agent.qualificationRules.length) {
+      agent.qualificationRules.forEach(r => { if(r.field) rules[r.field] = r.keywords || []; });
+    } else if (agent.qualificationField) {
+      const kws = agent.qualificationValues?.length ? [...agent.qualificationValues] : agent.qualificationValue ? [agent.qualificationValue] : [];
+      rules[agent.qualificationField] = kws;
+    }
+    return rules;
+  });
+  const [kwInputs, setKwInputs] = useState({});
+  const resultFields = useMemo(() => {
+    const s = agent.resultSchema || {};
+    if (s.properties) return Object.keys(s.properties);
+    return Object.keys(s).filter(k => k !== "type" && k !== "required");
+  }, [agent.resultSchema]);
+  const selectedFields = Object.keys(qualRules);
+  function toggleField(field) { setQualRules(prev => { const next = {...prev}; if (next[field] !== undefined) { delete next[field]; } else { next[field] = []; } return next; }); }
+  function addKeyword(field) {
+    const kw = (kwInputs[field] || "").trim();
+    if (!kw) return;
+    setQualRules(prev => { const existing = prev[field] || []; if (existing.map(k=>k.toLowerCase()).includes(kw.toLowerCase())) return prev; return {...prev, [field]: [...existing, kw]}; });
+    setKwInputs(prev => ({...prev, [field]: ""}));
+  }
+  function removeKeyword(field, kw) { setQualRules(prev => ({...prev, [field]: (prev[field]||[]).filter(k=>k!==kw)})); }
+  function doSave() {
+    const rules = Object.entries(qualRules).filter(([f]) => f).map(([field, keywords]) => ({field, keywords}));
+    const firstField = rules[0]?.field || "";
+    const allKeywords = rules.flatMap(r => r.keywords);
+    onSave({...a, qualificationRules: rules, qualificationField: firstField, qualificationValues: allKeywords, qualificationValue: allKeywords[0] || ""});
+  }
+  return (
+    <div className="t-modal-bg">
+      <div className="t-modal t-fade" style={{maxWidth:600}}>
+        <div className="t-modal-hd"><span>Edit Agent — {agent.displayName||agent.agentCode}</span><button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:18,lineHeight:1}}>×</button></div>
+        <div className="t-modal-body" style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{fontSize:9,fontFamily:"var(--fm)",color:"var(--muted)"}}>Hunar ID: {agent.agentId}</div>
+          <div><label className="t-label">Display Name</label><input className="t-input" value={a.displayName||""} onChange={e=>setA({...a,displayName:e.target.value})}/></div>
+          <div><label className="t-label">Description</label><textarea className="t-input" rows={2} value={a.description||""} onChange={e=>setA({...a,description:e.target.value})}/></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div><label className="t-label">Agent Code</label><input className="t-input" value={a.agentCode||""} disabled style={{background:"#f5f5f5",color:"var(--muted)"}}/></div>
+            <div><label className="t-label">Est. Seconds / Call</label><input className="t-input" type="number" value={a.estSecondsPerCall||180} onChange={e=>setA({...a,estSecondsPerCall:Number(e.target.value)})}/></div>
+          </div>
+          <div style={{border:"2px solid var(--black)",padding:12}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}><span style={{background:"var(--black)",color:"#fff",padding:"2px 7px",fontFamily:"var(--fd)",fontWeight:900,fontSize:8,letterSpacing:".2em"}}>QUALIFICATION RULE</span></div>
+            <label className="t-label" style={{marginBottom:6}}>Pick output field(s)</label>
+            {resultFields.length===0 ? <div style={{fontSize:11,color:"var(--muted)",fontStyle:"italic"}}>No result schema fields found.</div> : (
+              <div style={{border:"1.5px solid var(--black)",background:"#fafafa",marginBottom:10}}>
+                {resultFields.map(f=>{
+                  const isSelected = qualRules[f] !== undefined;
+                  return (
+                    <label key={f} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderBottom:"1px solid #f0f0f0",cursor:"pointer",background:isSelected?"#f0f5ff":"transparent"}}>
+                      <input type="checkbox" checked={isSelected} onChange={()=>toggleField(f)} style={{width:13,height:13}}/>
+                      <span style={{flex:1,fontFamily:"var(--fm)",fontSize:11}}>{f}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            {selectedFields.map(field=>{
+              const keywords = qualRules[field]||[];
+              return (
+                <div key={field} style={{border:"1.5px solid #0066b3",padding:"8px 10px",marginBottom:8}}>
+                  <div style={{fontFamily:"var(--fm)",fontSize:11,fontWeight:700,color:"var(--blue)",marginBottom:6}}>{field}</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:6}}>{keywords.map(kw=><span key={kw} className="t-kwtag">~{kw}<button className="t-kwtag-rm" onClick={()=>removeKeyword(field,kw)}>×</button></span>)}</div>
+                  <div style={{display:"flex",gap:6}}>
+                    <input className="t-input" style={{flex:1,fontSize:11,padding:"5px 8px"}} value={kwInputs[field]||""} onChange={e=>setKwInputs(prev=>({...prev,[field]:e.target.value}))} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addKeyword(field);}}} placeholder="Add keyword…"/>
+                    <button className="t-btn t-btn-black t-btn-sm" onClick={()=>addKeyword(field)}>+ Add</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <label style={{display:"flex",alignItems:"center",gap:7,fontSize:12,cursor:"pointer"}}><input type="checkbox" style={{width:"auto"}} checked={!!a.active} onChange={e=>setA({...a,active:e.target.checked})}/>Active</label>
+        </div>
+        <div className="t-modal-footer">
+          <button onClick={onClose} className="t-btn t-btn-outline">Cancel</button>
+          <button onClick={doSave} className="t-btn t-btn-black">Save Agent</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// USERS VIEW
+// ─────────────────────────────────────────────────────────────
+function UsersView({ user, teams }) {
+  const [users,setUsers]=useState([]); const [loading,setLoading]=useState(true);
+  const [editing,setEditing]=useState(null); const [adding,setAdding]=useState(false);
+  async function refresh(){ setLoading(true); const r=await api("listUsers",{}); setLoading(false); if(r.ok)setUsers(r.users||[]); }
+  useEffect(()=>{refresh();},[]);
+  async function save(u){ const r=await api("upsertUser",{user:u}); if(r.ok){setEditing(null);setAdding(false);refresh();} else alert(r.message||r.error); }
+  async function resend(email){ const r=await api("resendInvite",{email}); if(r.ok)alert("Invite resent."); else alert(r.message||r.error); }
+  async function deactivate(email){ if(!confirm("Deactivate "+email+"?"))return; await api("deleteUser",{email}); refresh(); }
+  async function setLimit(email,minutes){ await api("setLimit",{email,minutes:Number(minutes)}); refresh(); }
+  const canDeactivate = user.role === "super_admin";
+  return (
+    <div className="t-fade">
+      <div className="t-mast">
+        <div><div className="t-mast-title">Users</div><div className="t-mast-sub">{users.filter(u=>u.active).length} active · {users.filter(u=>u.pending).length} pending</div></div>
+        <button onClick={()=>setAdding(true)} className="t-btn t-btn-outline" style={{color:"var(--black)",borderColor:"var(--black)"}}>+ Add User</button>
+      </div>
+      <div className="t-board">
+        <div className="t-board-hd"><h2 className="t-board-hd-title">Team Members</h2></div>
+        {loading ? <div style={{padding:60,textAlign:"center"}}><Spin/></div> : users.length===0 ? (
+          <div className="t-empty">No users found.</div>
+        ) : (
+          <div className="t-tbl-wrap">
+            <table className="t-tbl">
+              <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Team</th><th>Daily Limit</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody>
+                {users.map(u=>(
+                  <tr key={u.email}>
+                    <td><div className="t-tbl nm">{u.name}</div></td>
+                    <td><span className="t-mono" style={{fontSize:10}}>{u.email}</span></td>
+                    <td><RoleTag role={u.role}/></td>
+                    <td style={{fontSize:11}}>{u.team||"—"}</td>
+                    <td>{(user.role==="super_admin"||user.role==="admin")?<input className="t-input" type="number" defaultValue={u.dailyMinuteLimit} onBlur={e=>{if(Number(e.target.value)!==u.dailyMinuteLimit)setLimit(u.email,e.target.value);}} style={{width:70,padding:"4px 6px"}}/>:u.dailyMinuteLimit}</td>
+                    <td>{!u.active?<span className="t-pill t-pill-live">Deactivated</span>:u.pending?<span className="t-pill t-pill-hold">Pending</span>:<span className="t-pill t-pill-done">Active</span>}</td>
+                    <td>
+                      <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                        <button onClick={()=>setEditing(u)} className="t-btn t-btn-outline t-btn-sm">Edit</button>
+                        {(u.pending||!u.active) && <button onClick={()=>resend(u.email)} className="t-btn t-btn-outline t-btn-sm">Resend</button>}
+                        {canDeactivate && u.active && <button onClick={()=>deactivate(u.email)} className="t-btn t-btn-red t-btn-sm">Deactivate</button>}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      {adding&&<UserModal user={{role:"recruiter",active:true,dailyMinuteLimit:90,team:user.role==="team_lead"?user.team:""}} teams={teams} actorRole={user.role} actorTeam={user.team} onSave={save} onClose={()=>setAdding(false)} isNew/>}
+      {editing&&<UserModal user={editing} teams={teams} actorRole={user.role} actorTeam={user.team} onSave={save} onClose={()=>setEditing(null)}/>}
+    </div>
+  );
+}
+function UserModal({ user, teams, actorRole, actorTeam, onSave, onClose, isNew }) {
+  const [u,setU]=useState({...user});
+  const roles=actorRole==="super_admin"?["super_admin","admin","team_lead","recruiter"]:(actorRole==="admin"?["team_lead","recruiter"]:["recruiter"]);
+  const locked=actorRole==="team_lead";
+  return (
+    <div className="t-modal-bg">
+      <div className="t-modal t-fade">
+        <div className="t-modal-hd"><span>{isNew?"Add User":"Edit User"}</span><button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:18,lineHeight:1}}>×</button></div>
+        <div className="t-modal-body" style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div><label className="t-label">Email</label><input className="t-input" type="email" disabled={!isNew} value={u.email||""} onChange={e=>setU({...u,email:e.target.value})}/></div>
+          <div><label className="t-label">Name</label><input className="t-input" value={u.name||""} onChange={e=>setU({...u,name:e.target.value})}/></div>
+          <div><label className="t-label">Role</label><select className="t-select" style={{width:"100%"}} value={u.role} disabled={locked} onChange={e=>setU({...u,role:e.target.value})}>{roles.map(r=><option key={r} value={r}>{r}</option>)}</select></div>
+          <div><label className="t-label">Team</label><select className="t-select" style={{width:"100%"}} value={u.team||""} disabled={locked} onChange={e=>setU({...u,team:e.target.value})}><option value="">— none —</option>{teams.map(t=><option key={t.id} value={t.name}>{t.name}</option>)}</select></div>
+          <div><label className="t-label">Daily Minute Limit</label><input className="t-input" type="number" value={u.dailyMinuteLimit||0} onChange={e=>setU({...u,dailyMinuteLimit:Number(e.target.value)})}/></div>
+          {!isNew && <label style={{display:"flex",alignItems:"center",gap:7,fontSize:12,cursor:"pointer"}}><input type="checkbox" style={{width:"auto"}} checked={!!u.active} onChange={e=>setU({...u,active:e.target.checked})}/>Active</label>}
+        </div>
+        <div className="t-modal-footer"><button onClick={onClose} className="t-btn t-btn-outline">Cancel</button><button onClick={()=>onSave(u)} className="t-btn t-btn-black">Save</button></div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// TEAMS VIEW
+// ─────────────────────────────────────────────────────────────
+function TeamsView({ user, agents }) {
+  const [teams,setTeams]=useState([]); const [loading,setLoading]=useState(true);
+  const [editing,setEditing]=useState(null); const [adding,setAdding]=useState(false);
+  async function refresh(){ setLoading(true); const r=await api("listTeams",{}); setLoading(false); if(r.ok)setTeams(r.teams||[]); }
+  useEffect(()=>{refresh();},[]);
+  async function save(t){ const r=await api("upsertTeam",{team:t}); if(r.ok){setEditing(null);setAdding(false);refresh();} else alert(r.message||r.error); }
+  return (
+    <div className="t-fade">
+      <div className="t-mast">
+        <div><div className="t-mast-title">Teams</div><div className="t-mast-sub">{teams.length} teams</div></div>
+        <button onClick={()=>setAdding(true)} className="t-btn t-btn-outline" style={{color:"var(--black)",borderColor:"var(--black)"}}>+ Add Team</button>
+      </div>
+      <div className="t-board">
+        <div className="t-board-hd"><h2 className="t-board-hd-title">All Teams</h2></div>
+        {loading ? <div style={{padding:60,textAlign:"center"}}><Spin/></div> : teams.length===0 ? <div className="t-empty">No teams yet.</div> : (
+          <div className="t-tbl-wrap">
+            <table className="t-tbl">
+              <thead><tr><th>Team Name</th><th>Admin Email</th><th>Agents Assigned</th><th>Actions</th></tr></thead>
+              <tbody>
+                {teams.map(t=>(
+                  <tr key={t.id}>
+                    <td><div className="t-tbl nm">{t.name}</div></td>
+                    <td><span className="t-mono" style={{fontSize:10}}>{t.adminEmail||"—"}</span></td>
+                    <td>{(t.agentCodes||[]).map(code=>{const a=agents.find(x=>x.agentCode===code);return <span key={code} className="t-pill t-pill-blue" style={{marginRight:3,marginBottom:2}}>{a?a.displayName:code}</span>;})}</td>
+                    <td><button onClick={()=>setEditing(t)} className="t-btn t-btn-outline t-btn-sm">Edit</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      {adding&&<TeamModal team={{name:"",adminEmail:"",agentCodes:[]}} agents={agents} onSave={save} onClose={()=>setAdding(false)} isNew/>}
+      {editing&&<TeamModal team={editing} agents={agents} onSave={save} onClose={()=>setEditing(null)}/>}
+    </div>
+  );
+}
+function TeamModal({ team, agents, onSave, onClose, isNew }) {
+  const [t,setT]=useState({...team,agentCodes:team.agentCodes||[]});
+  function toggleAgent(code){ const has=t.agentCodes.includes(code); setT({...t,agentCodes:has?t.agentCodes.filter(c=>c!==code):[...t.agentCodes,code]}); }
+  return (
+    <div className="t-modal-bg">
+      <div className="t-modal t-fade">
+        <div className="t-modal-hd"><span>{isNew?"Add Team":"Edit Team"}</span><button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:18,lineHeight:1}}>×</button></div>
+        <div className="t-modal-body" style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div><label className="t-label">Team Name</label><input className="t-input" value={t.name||""} onChange={e=>setT({...t,name:e.target.value})}/></div>
+          <div><label className="t-label">Admin Email (optional)</label><input className="t-input" type="email" value={t.adminEmail||""} onChange={e=>setT({...t,adminEmail:e.target.value})}/></div>
+          <div>
+            <label className="t-label">Agents This Team May Run</label>
+            <div style={{border:"1.5px solid var(--black)",maxHeight:200,overflowY:"auto"}}>
+              {agents.map(a=>(
+                <label key={a.agentCode} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderBottom:"1px solid #f0f0f0",cursor:"pointer",fontSize:12}}>
+                  <input type="checkbox" style={{width:"auto"}} checked={t.agentCodes.includes(a.agentCode)} onChange={()=>toggleAgent(a.agentCode)}/>
+                  <div style={{flex:1}}><div style={{fontWeight:600,fontSize:12}}>{a.displayName}</div><div style={{fontSize:9,color:"var(--muted)",fontFamily:"var(--fm)"}}>{a.agentCode} · {a.active?"active":"inactive"}</div></div>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="t-modal-footer"><button onClick={onClose} className="t-btn t-btn-outline">Cancel</button><button onClick={()=>onSave(t)} className="t-btn t-btn-black">Save</button></div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// USAGE VIEW — enhanced with team/user stats including QL, connected, lineup, CV awaited, empty status
+// ─────────────────────────────────────────────────────────────
+function UsageView() {
+  const [data,setData]=useState(null); const [range,setRange]=useState("7d");
+  const [viewMode,setViewMode]=useState("team");
+  const [userFilter,setUserFilter]=useState("");
+
+  useEffect(()=>{ setData(null); (async()=>{ const r=await api("getUsage",{range}); if(r.ok)setData(r); })(); },[range]);
+
+  if(!data) return <div style={{padding:60,textAlign:"center"}}><Spin/></div>;
+
+  // Chart data
+  const byDay={};
+  (data.rows||[]).forEach(r=>{byDay[r.day]=(byDay[r.day]||0)+Number(r.minutes||0);});
+  const chartData=Object.keys(byDay).sort().map(d=>({day:d,minutes:Math.round(byDay[d]*10)/10}));
+
+  // Team grouping with extended stats from leadStats
+  const byTeam={};
+  (data.rows||[]).forEach(r=>{
+    const t=r.team||"No Team";
+    if(!byTeam[t]) byTeam[t]={name:t,totalMins:0,totalCalls:0,rows:[],ql:0,connected:0,lineup:0,cvAwaited:0,emptyStatus:0};
+    byTeam[t].totalMins=Math.round((byTeam[t].totalMins+Number(r.minutes||0))*10)/10;
+    byTeam[t].totalCalls+=Number(r.calls||0);
+    byTeam[t].rows.push(r);
+  });
+
+  // Aggregate lead stats per team
+  (data.leadStats||[]).forEach(ls=>{
+    const t=ls.team||"No Team";
+    if(byTeam[t]){
+      byTeam[t].ql += ls.totalLeads||0;
+      byTeam[t].connected += ls.connected||0;
+      byTeam[t].lineup += ls.interviewLinedUp||0;
+      byTeam[t].cvAwaited += ls.cvAwaited||0;
+      byTeam[t].emptyStatus += ls.emptyCallStatus||0;
+    }
+  });
+
+  const teamList=Object.values(byTeam).sort((a,b)=>b.totalMins-a.totalMins);
+
+  // Per-user aggregation with extended stats
+  const byUser = {};
+  (data.rows||[]).forEach(r=>{
+    const key = r.email || r.name;
+    if(!byUser[key]) byUser[key]={name:r.name,email:r.email,team:r.team,dailyLimit:r.dailyLimit,totalMins:0,totalCalls:0,days:0,ql:0,connected:0,lineup:0,cvAwaited:0,emptyStatus:0};
+    byUser[key].totalMins=Math.round((byUser[key].totalMins+Number(r.minutes||0))*10)/10;
+    byUser[key].totalCalls+=Number(r.calls||0);
+    byUser[key].days+=1;
+  });
+
+  // Merge leadStats into user
+  (data.leadStats||[]).forEach(ls=>{
+    const key = ls.email;
+    if(byUser[key]){
+      byUser[key].ql = ls.totalLeads||0;
+      byUser[key].connected = ls.connected||0;
+      byUser[key].lineup = ls.interviewLinedUp||0;
+      byUser[key].cvAwaited = ls.cvAwaited||0;
+      byUser[key].emptyStatus = ls.emptyCallStatus||0;
+    }
+  });
+
+  const userList = Object.values(byUser).sort((a,b)=>b.totalMins-a.totalMins);
+  const userOptions = userList.map(u=>({label:u.name||u.email, value:u.email}));
+
+  const filteredRows = userFilter
+    ? (data.rows||[]).filter(r=>r.email===userFilter||r.name===userFilter)
+    : (data.rows||[]);
+
+  const grandTotalMins = (data.rows||[]).reduce((s,r)=>s+Number(r.minutes||0),0);
+  const grandTotalCalls = (data.rows||[]).reduce((s,r)=>s+Number(r.calls||0),0);
+  const grandQL = (data.leadStats||[]).reduce((s,ls)=>s+(ls.totalLeads||0),0);
+  const grandConnected = (data.leadStats||[]).reduce((s,ls)=>s+(ls.connected||0),0);
+  const grandLineup = (data.leadStats||[]).reduce((s,ls)=>s+(ls.interviewLinedUp||0),0);
+
+  return (
+    <div className="t-fade">
+      <div className="t-mast">
+        <div><div className="t-mast-title">Usage</div><div className="t-mast-sub">Call minute consumption by team &amp; user</div></div>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          <div style={{display:"flex",border:"1.5px solid rgba(255,255,255,.3)",borderRadius:3,overflow:"hidden"}}>
+            <button onClick={()=>setViewMode("team")} style={{padding:"5px 12px",fontSize:10,fontFamily:"var(--fd)",fontWeight:700,letterSpacing:".08em",border:"none",cursor:"pointer",background:viewMode==="team"?"#fff":"transparent",color:viewMode==="team"?"var(--black)":"rgba(255,255,255,.7)"}}>By Team</button>
+            <button onClick={()=>setViewMode("user")} style={{padding:"5px 12px",fontSize:10,fontFamily:"var(--fd)",fontWeight:700,letterSpacing:".08em",border:"none",borderLeft:"1px solid rgba(255,255,255,.3)",cursor:"pointer",background:viewMode==="user"?"#fff":"transparent",color:viewMode==="user"?"var(--black)":"rgba(255,255,255,.7)"}}>By User</button>
+          </div>
+          <select className="mast-select" value={range} onChange={e=>setRange(e.target.value)}>
+            <option value="today">Today</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Grand totals */}
+      <div className="t-kpis" style={{gridTemplateColumns:"repeat(6,1fr)"}}>
+        {[
+          {label:"Total Minutes",value:Math.round(grandTotalMins*10)/10,color:"#ffc600"},
+          {label:"Total Calls",value:grandTotalCalls,color:"#0066b3"},
+          {label:"Active Users",value:userList.length,color:"#009149"},
+          {label:"Total QL",value:grandQL,color:"#009149"},
+          {label:"Connected",value:grandConnected,color:"#0369a1"},
+          {label:"Lined Up",value:grandLineup,color:"#5b21b6"},
+        ].map(k=>(
+          <div key={k.label} className="t-kpi">
+            <div className="t-kpi-accent" style={{background:k.color}}/>
+            <div className="t-kpi-label">{k.label}</div>
+            <div className="t-kpi-value">{k.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {chartData.length>0 && RECHARTS_OK && (
+        <div className="t-board">
+          <div className="t-board-hd"><h2 className="t-board-hd-title">Minutes Per Day</h2></div>
+          <div style={{padding:"14px 18px"}}>
+            <R.ResponsiveContainer width="100%" height={180}>
+              <R.BarChart data={chartData}>
+                <R.CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
+                <R.XAxis dataKey="day" fontSize={10} tick={{fill:"#888",fontFamily:"var(--fm)"}}/>
+                <R.YAxis fontSize={10} tick={{fill:"#888",fontFamily:"var(--fm)"}}/>
+                <R.Tooltip contentStyle={{border:"1.5px solid #0a0a0a",borderRadius:0,fontSize:11}}/>
+                <R.Bar dataKey="minutes" fill="#0a0a0a" radius={[2,2,0,0]}/>
+              </R.BarChart>
+            </R.ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {viewMode==="team" ? (
+        <div className="t-board">
+          <div className="t-board-hd"><h2 className="t-board-hd-title">By Team</h2><span className="t-board-meta">{teamList.length} teams</span></div>
+          {teamList.map(team=>(
+            <div key={team.name} className="usage-team-card">
+              <div className="usage-team-card-hd">
+                <span>{team.name}</span>
+                <span className="usage-team-stat">{team.totalCalls} calls</span>
+                <span className="usage-team-stat">{team.totalMins} min</span>
+              </div>
+              {/* Team KPI chips */}
+              <div style={{padding:"10px 16px",display:"flex",gap:8,flexWrap:"wrap",borderBottom:"1px solid var(--border)"}}>
+                <span className="usage-stat-chip blue"><b>{team.totalCalls}</b><span>calls</span></span>
+                <span className="usage-stat-chip yellow"><b>{team.totalMins}</b><span>min</span></span>
+                <span className="usage-stat-chip green"><b>{team.ql}</b><span>QL</span></span>
+                <span className="usage-stat-chip blue"><b>{team.connected}</b><span>connected</span></span>
+                <span className="usage-stat-chip purple"><b>{team.lineup}</b><span>lined up</span></span>
+                <span className="usage-stat-chip yellow"><b>{team.cvAwaited}</b><span>CV awaited</span></span>
+                {team.emptyStatus>0 && <span className="usage-stat-chip red"><b>{team.emptyStatus}</b><span>empty status</span></span>}
+              </div>
+              <div className="t-tbl-wrap">
+                <table className="t-tbl">
+                  <thead><tr><th>Day</th><th>User</th><th>Calls</th><th>Minutes</th><th>Daily Limit</th><th>Usage</th></tr></thead>
+                  <tbody>
+                    {team.rows.map((r,i)=>{
+                      const pct = r.dailyLimit>0 ? Math.min(100,Math.round((Number(r.minutes)/r.dailyLimit)*100)) : 0;
+                      return (
+                        <tr key={i}>
+                          <td><span className="t-mono" style={{fontSize:10}}>{r.day}</span></td>
+                          <td><div className="t-tbl nm">{r.name}</div><div className="t-tbl nm-sub">{r.email}</div></td>
+                          <td className="t-mono">{r.calls}</td>
+                          <td className="t-mono">{r.minutes}</td>
+                          <td className="t-mono">{r.dailyLimit}</td>
+                          <td style={{minWidth:80}}>
+                            <div style={{display:"flex",alignItems:"center",gap:6}}>
+                              <div className="t-bar" style={{flex:1,height:5,borderRadius:3}}>
+                                <div style={{width:pct+"%",borderRadius:3,height:"100%",background:pct>=90?"var(--red)":pct>=60?"var(--yellow)":"var(--green)"}}/>
+                              </div>
+                              <span style={{fontSize:9,fontFamily:"var(--fm)",color:"var(--muted)",minWidth:26}}>{pct}%</span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="t-board">
+          <div className="t-board-hd">
+            <h2 className="t-board-hd-title">Per User</h2>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <select className="t-select" value={userFilter} onChange={e=>setUserFilter(e.target.value)} style={{fontSize:11,minWidth:180}}>
+                <option value="">All users</option>
+                {userOptions.map(u=><option key={u.value} value={u.value}>{u.label}</option>)}
+              </select>
+              {userFilter && <button className="t-btn t-btn-sm t-btn-outline" onClick={()=>setUserFilter("")}>Clear ×</button>}
+              <span className="t-board-meta">{userFilter ? "1 user" : `${userList.length} users`}</span>
+            </div>
+          </div>
+
+          {/* Per-user summary cards with extended stats */}
+          {!userFilter && (
+            <div style={{padding:"12px 16px",display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:10,borderBottom:"1px solid var(--border)"}}>
+              {userList.map(u=>{
+                const avgMins = u.days>0 ? Math.round((u.totalMins/u.days)*10)/10 : 0;
+                const limitPct = u.dailyLimit>0 ? Math.min(100,Math.round((avgMins/u.dailyLimit)*100)) : 0;
+                return (
+                  <div key={u.email} className="usage-user-card" onClick={()=>setUserFilter(u.email)}>
+                    <div className="usage-user-hd">
+                      <Disc name={u.name||u.email}/>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div className="usage-user-name">{u.name||u.email}</div>
+                        <div className="usage-user-email">{u.email} · {u.team||"No team"}</div>
+                      </div>
+                    </div>
+                    {/* Stats chips */}
+                    <div style={{padding:"8px 14px",display:"flex",gap:6,flexWrap:"wrap"}}>
+                      <span className="usage-stat-chip blue"><b>{u.totalCalls}</b><span>calls</span></span>
+                      <span className="usage-stat-chip yellow"><b>{u.totalMins}</b><span>min</span></span>
+                      <span className="usage-stat-chip green"><b>{u.ql}</b><span>QL</span></span>
+                      <span className="usage-stat-chip blue"><b>{u.connected}</b><span>conn</span></span>
+                      <span className="usage-stat-chip purple"><b>{u.lineup}</b><span>lineup</span></span>
+                      <span className="usage-stat-chip yellow"><b>{u.cvAwaited}</b><span>CV</span></span>
+                      {u.emptyStatus>0 && <span className="usage-stat-chip red"><b>{u.emptyStatus}</b><span>empty</span></span>}
+                    </div>
+                    {u.dailyLimit>0 && (
+                      <div style={{padding:"0 14px 10px"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"var(--muted)",fontFamily:"var(--fm)",marginBottom:3}}>
+                          <span>Avg vs limit ({u.dailyLimit}m)</span>
+                          <span style={{color:limitPct>=90?"var(--red)":limitPct>=60?"var(--yellow)":"var(--green)",fontWeight:700}}>{limitPct}%</span>
+                        </div>
+                        <div className="t-bar" style={{height:5,borderRadius:3}}>
+                          <div style={{width:limitPct+"%",height:"100%",borderRadius:3,background:limitPct>=90?"var(--red)":limitPct>=60?"var(--yellow)":"var(--green)"}}/>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Detailed rows table */}
+          <div className="t-tbl-wrap">
+            <table className="t-tbl">
+              <thead><tr><th>Day</th><th>User</th><th>Team</th><th>Calls</th><th>Minutes</th><th>QL</th><th>Connected</th><th>Lined Up</th><th>CV Awaited</th><th style={{color:"var(--red)"}}>Empty Status</th><th>Limit</th><th>Usage %</th></tr></thead>
+              <tbody>
+                {filteredRows.map((r,i)=>{
+                  const pct = r.dailyLimit>0 ? Math.min(100,Math.round((Number(r.minutes)/r.dailyLimit)*100)) : 0;
+                  // find lead stats for this user
+                  const ls = (data.leadStats||[]).find(x=>x.email===r.email)||{};
+                  return (
+                    <tr key={i}>
+                      <td><span className="t-mono" style={{fontSize:10}}>{r.day}</span></td>
+                      <td><div className="t-tbl nm">{r.name}</div><div className="t-tbl nm-sub">{r.email}</div></td>
+                      <td style={{fontSize:11}}>{r.team||"—"}</td>
+                      <td className="t-mono">{r.calls}</td>
+                      <td className="t-mono">{r.minutes}</td>
+                      <td><span className="usage-stat-chip green" style={{fontSize:10}}><b>{ls.totalLeads||0}</b></span></td>
+                      <td><span className="usage-stat-chip blue" style={{fontSize:10}}><b>{ls.connected||0}</b></span></td>
+                      <td><span className="usage-stat-chip purple" style={{fontSize:10}}><b>{ls.interviewLinedUp||0}</b></span></td>
+                      <td><span className="usage-stat-chip yellow" style={{fontSize:10}}><b>{ls.cvAwaited||0}</b></span></td>
+                      <td>{(ls.emptyCallStatus||0)>0 ? <span className="usage-stat-chip red" style={{fontSize:10}}><b>{ls.emptyCallStatus}</b></span> : <span style={{color:"var(--green)",fontSize:11}}>✓</span>}</td>
+                      <td className="t-mono">{r.dailyLimit}</td>
+                      <td style={{minWidth:90}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                          <div className="t-bar" style={{flex:1,height:5,borderRadius:3}}>
+                            <div style={{width:pct+"%",height:"100%",borderRadius:3,background:pct>=90?"var(--red)":pct>=60?"var(--yellow)":"var(--green)"}}/>
+                          </div>
+                          <span style={{fontSize:9,fontFamily:"var(--fm)",color:pct>=90?"var(--red)":pct>=60?"#854d0e":"var(--green)",fontWeight:700,minWidth:26}}>{pct}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {filteredRows.length===0 && <tr><td colSpan={12} style={{textAlign:"center",color:"var(--muted)",padding:32,fontFamily:"var(--fd)",fontWeight:700}}>No usage data.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// APP ROOT
+// ─────────────────────────────────────────────────────────────
+function App() {
+  const [view,setView]=useState("dashboard");
+  const [user,setUser]=useState(null);
+  const [today,setToday]=useState(null);
+  const [teams,setTeams]=useState([]);
+  const [users,setUsers]=useState([]);
+  const [agents,setAgents]=useState([]);
+  const [selAgent,setSelAgent]=useState("");
+  const [showChangePw,setShowChangePw]=useState(false);
+  const [bootScreen,setBootScreen]=useState("boot");
+  const [setupToken,setSetupToken]=useState("");
+  const [leadsFilter,setLeadsFilter]=useState(null);
+
+  async function refreshMe(){ const r=await api("me",{}); if(r.ok){setUser(r.user);setToday(r.today);setAgents(r.agents||[]);} }
+  async function refreshTeams(){ const r=await api("listTeams",{}); if(r.ok)setTeams(r.teams||[]); }
+  async function refreshUsers(){ if(user&&user.role!=="recruiter"){const r=await api("listUsers",{});if(r.ok)setUsers(r.users||[]);} }
+
+  useEffect(()=>{
+    const params=new URLSearchParams(window.location.search);
+    const t=params.get("token");
+    if(t){setSetupToken(t);setBootScreen("setup");return;}
+    const s=localStorage.getItem("session");
+    if(!s){setBootScreen("login");return;}
+    (async()=>{
+      const r=await api("me",{});
+      if(r.ok){setUser(r.user);setToday(r.today);setAgents(r.agents||[]);setBootScreen("app");}
+      else{localStorage.removeItem("session");setBootScreen("login");}
+    })();
+  },[]);
+
+  useEffect(()=>{if(bootScreen==="app"){refreshTeams();refreshUsers();}},[bootScreen]);
+
+  async function onLogout(){ await api("logout",{}); localStorage.removeItem("session"); window.location.search=""; }
+  function onViewLeads(agentCode, requestId) { setLeadsFilter({agentCode, requestId}); setView("leads"); }
+
+  if(bootScreen==="boot") return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><Spin/></div>;
+  if(bootScreen==="login") return <LoginScreen onLoggedIn={u=>{setUser(u);setBootScreen("app");refreshMe();}} goForgot={()=>setBootScreen("forgot")}/>;
+  if(bootScreen==="forgot") return <ForgotScreen goLogin={()=>setBootScreen("login")}/>;
+  if(bootScreen==="setup") return <SetupScreen token={setupToken} goLogin={()=>{setBootScreen("login");window.history.replaceState({},"",window.location.pathname);}} onCompleted={u=>{setUser(u);setBootScreen("app");window.history.replaceState({},"",window.location.pathname);refreshMe();}}/>;
+
+  let content=null;
+  if(view==="dashboard") content=<DashboardView user={user} agents={agents} selectedAgent={selAgent} setSelectedAgent={setSelAgent}/>;
+  else if(view==="leads") content=<LeadsView user={user} users={users} agents={agents} teams={teams} initialFilter={leadsFilter} onClearFilter={()=>setLeadsFilter(null)}/>;
+  else if(view==="trigger") content=<UploadView user={user} agents={agents} refreshMe={refreshMe}/>;
+  else if(view==="campaigns") content=<CampaignsView agents={agents} user={user} teams={teams} onViewLeads={onViewLeads}/>;
+  else if(view==="agents") content=<AgentsView onChange={setAgents}/>;
+  else if(view==="users") content=<UsersView user={user} teams={teams}/>;
+  else if(view==="teams") content=<TeamsView user={user} agents={agents}/>;
+  else if(view==="usage") content=<UsageView/>;
+
+  return (
+    <>
+      <Shell user={user} today={today} onLogout={onLogout} view={view} setView={v=>{setView(v);if(v!=="leads")setLeadsFilter(null);}} onChangePw={()=>setShowChangePw(true)}>
+        {content}
+      </Shell>
+      {showChangePw && <ChangePasswordModal onClose={()=>setShowChangePw(false)}/>}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
