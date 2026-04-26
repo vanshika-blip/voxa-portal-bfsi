@@ -992,8 +992,14 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
   }, [selTeam, users]);
 
   async function refresh() {
-    if(!selAgent){setLeads([]);setHeaders([]);setLoading(false);return;}
     setLoading(true);
+    if(!selAgent) {
+      // All agents — fetch all leads across visible agents
+      const r = await api("getLeads", { agentCode: "", filter: { search, unassignedOnly, requestId: reqFilter||undefined } });
+      setLoading(false);
+      if(r.ok){setLeads(r.leads||[]);setHeaders(r.headers||[]);setLastRefresh(new Date());}
+      return;
+    }
     const r = await fetchLeadsWithCache(selAgent, {
       search,
       unassignedOnly,
@@ -1061,8 +1067,15 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
   }
 
   async function handleCellChange(callId, field, value) {
-    await api("updateLead",{agentCode:selAgent,callId,fields:{[field]:value}});
-    invalidateLeadCache(selAgent);
+    // Optimistic update — instant UI response
+    setLeads(prev => prev.map(l => l["Call ID"] === callId ? {...l, [field]: value} : l));
+    // Save in background
+    const r = await api("updateLead",{agentCode:selAgent,callId,fields:{[field]:value}});
+    if (!r.ok) {
+      // Revert on failure
+      invalidateLeadCache(selAgent);
+      refresh();
+    }
   }
 
   function renderCell(h, val, lead) {
@@ -1110,7 +1123,7 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
               {teams.map(t=><option key={t.id} value={t.name}>{t.name}</option>)}
             </select>
           )}
-          <AgentPicker agents={agents} value={selAgent} onChange={v=>{setSelAgent(v);setSelected(new Set());}}/>
+          <AgentPicker agents={agents} value={selAgent} onChange={v=>{setSelAgent(v);setSelected(new Set());}} allowAll/>
           <input className="t-input" value={searchInput} onChange={e=>setSearchInput(e.target.value)} placeholder="Search name / mobile…" style={{width:180,background:"rgba(255,255,255,.08)",borderColor:"rgba(255,255,255,.2)",color:"#fff",fontSize:12}}/>
           {canBulkAssign && (
             <label style={{fontSize:10,display:"flex",alignItems:"center",gap:5,color:"rgba(255,255,255,.6)",whiteSpace:"nowrap",fontFamily:"var(--fd)",fontWeight:700,letterSpacing:".06em",textTransform:"uppercase",cursor:"pointer"}}>
@@ -1123,7 +1136,7 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
       </div>
 
       <div style={{flex:1,background:"var(--white)"}}>
-        {!selAgent && <div className="t-empty">Pick an agent to view leads.</div>}
+        {false && <div className="t-empty">Pick an agent to view leads.</div>}
         {selAgent && loading && <div style={{padding:60,textAlign:"center"}}><Spin/></div>}
         {selAgent && !loading && filteredLeads.length===0 && <div className="t-empty">No leads found.</div>}
         {selAgent && !loading && leads.length>0 && (
