@@ -10,6 +10,9 @@ const GAS_URL = process.env.GAS_URL;
 
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
+// The frontend sends Content-Type: text/plain;charset=utf-8 (required by GAS CORS policy).
+// express.json() won't parse that, so we also accept raw text and parse it ourselves.
+app.use(express.text({ type: 'text/plain', limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const CACHEABLE = ['getDashboard','getCampaigns','listAgents','listTeams','listUsers','getUsage'];
@@ -19,8 +22,17 @@ const BUST = {
 };
 
 app.post('/api', async (req, res) => {
-  const { action, session, ...rest } = req.body || {};
+  // Support both application/json and text/plain (GAS CORS workaround)
+  let parsed = req.body;
+  if (typeof parsed === 'string') {
+    try { parsed = JSON.parse(parsed); } catch (e) {
+      return res.json({ ok: false, error: 'BAD_REQUEST', message: 'Invalid JSON body' });
+    }
+  }
+  const { action, session, ...rest } = parsed || {};
   if (!action) return res.json({ ok: false, error: 'NO_ACTION' });
+
+  if (!GAS_URL) return res.status(503).json({ ok: false, error: 'SERVER_MISCONFIGURED', message: 'GAS_URL environment variable is not set.' });
 
   const cacheKey = action + '|' + session + '|' + JSON.stringify(rest);
 
@@ -37,7 +49,15 @@ app.post('/api', async (req, res) => {
       body: JSON.stringify({ action, session, ...rest }),
       timeout: 60000,
     });
-    const data = await r.json();
+    const text = await r.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      // GAS returned HTML (e.g. login redirect, quota error, or script not deployed correctly)
+      const snippet = text.slice(0, 200).replace(/\s+/g, ' ');
+      return res.status(502).json({ ok: false, error: 'GAS_INVALID_RESPONSE', message: 'Google Apps Script did not return JSON. Check deployment settings and GAS_URL. Response: ' + snippet });
+    }
     if (CACHEABLE.includes(action) && data.ok) cache.set(cacheKey, data);
     res.json(data);
   } catch (e) {
