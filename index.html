@@ -598,21 +598,94 @@ const NAV_ITEMS = [
   { id:"usage",     label:"Usage", hideFor:["recruiter"] },
 ];
 
-// ── Excel column filter — fixed to use controlled value properly ──
+// ── Multi-select + search column filter ──
 function ExcelColFilter({ header, values, selected, onChange }) {
-  const allVals = useMemo(() => [...new Set(values.map(v=>String(v||"")))].sort((a,b)=>a.localeCompare(b)), [values]);
-  const curVal = (selected && selected.length === 1) ? selected[0] : "";
-  const hasFilter = Boolean(curVal);
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef(null);
+
+  const allVals = useMemo(() => [...new Set(values.map(v=>String(v||"")))].sort((a,b)=>{
+    if(a===""&&b!=="") return -1; if(b===""&&a!=="") return 1;
+    return a.localeCompare(b);
+  }), [values]);
+
+  const sel = useMemo(() => new Set(selected||[]), [selected]);
+  const hasFilter = sel.size > 0;
+
+  const filtered = useMemo(() => {
+    if(!search.trim()) return allVals;
+    const q = search.toLowerCase();
+    return allVals.filter(v => v.toLowerCase().includes(q) || (v===""&&"blank".includes(q)));
+  }, [allVals, search]);
+
+  // close on outside click
+  useEffect(() => {
+    if(!open) return;
+    function handle(e){ if(ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [open]);
+
+  function toggle(v) {
+    const next = new Set(sel);
+    if(next.has(v)) next.delete(v); else next.add(v);
+    onChange(next.size > 0 ? [...next] : null);
+  }
+  function clearAll(e){ e.stopPropagation(); onChange(null); setSearch(""); }
+  function selectAll(e){ e.stopPropagation(); onChange(filtered.length>0?[...filtered]:null); }
+
+  const label = hasFilter
+    ? sel.size === 1 ? ([...sel][0]||"(blank)") : `${sel.size} selected`
+    : `All ▾`;
+
   return (
-    <select
-      className={"simple-col-filter"+(hasFilter?" has-filter":"")}
-      value={curVal}
-      onChange={e => { const v=e.target.value; onChange(v ? [v] : null); }}
-      title={header}
-    >
-      <option value="">All ▾</option>
-      {allVals.map(v=><option key={v} value={v}>{v||"(blank)"}</option>)}
-    </select>
+    <div ref={ref} style={{position:"relative",width:"100%"}}>
+      <div
+        onClick={()=>setOpen(o=>!o)}
+        className={"simple-col-filter"+(hasFilter?" has-filter":"")}
+        style={{cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",userSelect:"none",padding:"2px 20px 2px 5px",minWidth:0}}
+        title={hasFilter?[...sel].join(", "):header}
+      >
+        <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{label}</span>
+        {hasFilter&&<span onMouseDown={clearAll} style={{marginLeft:3,cursor:"pointer",opacity:.6,fontSize:9,flexShrink:0}}>✕</span>}
+      </div>
+      {open && (
+        <div style={{position:"absolute",top:"calc(100% + 2px)",left:0,zIndex:99999,background:"#fff",border:"2px solid var(--black)",boxShadow:"3px 3px 0 rgba(0,0,0,.12)",minWidth:160,maxWidth:260,width:"max-content"}}>
+          {/* Search input */}
+          <div style={{padding:"4px 5px",borderBottom:"1px solid #eee"}}>
+            <input
+              autoFocus
+              value={search}
+              onChange={e=>setSearch(e.target.value)}
+              placeholder="Search…"
+              style={{width:"100%",border:"1px solid #ddd",borderRadius:2,padding:"3px 5px",fontSize:11,fontFamily:"var(--fb)",outline:"none",boxSizing:"border-box"}}
+              onKeyDown={e=>{ if(e.key==="Escape"){setOpen(false);setSearch("");} }}
+              onClick={e=>e.stopPropagation()}
+            />
+          </div>
+          {/* Quick actions */}
+          <div style={{display:"flex",gap:0,borderBottom:"1px solid #eee"}}>
+            <button onMouseDown={e=>{e.preventDefault();onChange(null);setSearch("");}} style={{flex:1,padding:"3px 0",fontSize:10,fontFamily:"var(--fb)",border:"none",borderRight:"1px solid #eee",background:"#fafafa",cursor:"pointer"}}>Clear</button>
+            <button onMouseDown={e=>{e.preventDefault();selectAll(e);}} style={{flex:1,padding:"3px 0",fontSize:10,fontFamily:"var(--fb)",border:"none",background:"#fafafa",cursor:"pointer"}}>All shown</button>
+          </div>
+          {/* Options list */}
+          <div style={{maxHeight:200,overflowY:"auto"}}>
+            {filtered.length===0&&<div style={{padding:"6px 8px",fontSize:11,color:"#999",fontFamily:"var(--fb)"}}>No matches</div>}
+            {filtered.map(v=>{
+              const checked = sel.has(v);
+              return (
+                <label key={v} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 8px",cursor:"pointer",background:checked?"#eef3ff":"transparent",fontSize:11,fontFamily:"var(--fb)"}} onMouseDown={e=>{e.preventDefault();toggle(v);}}>
+                  <input type="checkbox" checked={checked} readOnly style={{width:11,height:11,cursor:"pointer",accentColor:"var(--blue)"}}/>
+                  <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{v||"(blank)"}</span>
+                </label>
+              );
+            })}
+          </div>
+          {/* Footer */}
+          {hasFilter&&<div style={{padding:"3px 8px",borderTop:"1px solid #eee",fontSize:10,color:"var(--blue)",fontFamily:"var(--fb)"}}>{sel.size} selected</div>}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -651,8 +724,8 @@ function useTableFilters(data, headers) {
 }
 
 function isDateCol(h) {
-  return /^(date|called.?at|call.?date|start.?time|timestamp|created.?at|called.?on)$/i.test(h)
-    || /date$/i.test(h) || h === "Date";
+  return /^(date|called.?at|call.?date|start.?time|timestamp|created.?at|called.?on|started.?at)$/i.test(h)
+    || /date$/i.test(h) || h === "Date" || h === "Started At";
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1016,7 +1089,7 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
     return ()=>clearInterval(t);
   },[selAgent, search, unassignedOnly, reqFilter]);
 
-  const fixedCols = ["Callee Name","Mobile Number","Assigned To Email","Call Status","Feedback","Selection Process","Remarks","Recording URL"];
+  const fixedCols = ["Callee Name","Mobile Number","Started At","Assigned To Email","Call Status","Feedback","Selection Process","Remarks","Recording URL"];
   const dateCols = headers.filter(h => isDateCol(h) && !fixedCols.includes(h));
   const outCols = headers.filter(h=>h.startsWith("out."));
   const inCols = headers.filter(h=>h.startsWith("in."));
@@ -1489,7 +1562,7 @@ function CampaignQualifiedTab({ campaign }) {
     })();
   },[campaign.requestId]);
 
-  const fixedCols = ["Callee Name","Mobile Number","Assigned To Email","Call Status","Feedback","Selection Process","Remarks","Recording URL"];
+  const fixedCols = ["Callee Name","Mobile Number","Started At","Assigned To Email","Call Status","Feedback","Selection Process","Remarks","Recording URL"];
   const dateCols = headers.filter(h => isDateCol(h) && !fixedCols.includes(h));
   const outCols = headers.filter(h=>h.startsWith("out."));
   const inCols = headers.filter(h=>h.startsWith("in."));
