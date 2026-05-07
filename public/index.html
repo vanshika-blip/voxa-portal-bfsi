@@ -581,7 +581,6 @@ const NAV_ITEMS = [
   { id:"myagents",  label:"Agents", showFor:["team_lead","individual_contributor"] },
   { id:"users",     label:"Users", hideFor:["recruiter","individual_contributor"] },
   { id:"teams",     label:"Teams", hideFor:["recruiter","team_lead","individual_contributor"] },
-  { id:"setup",     label:"⚙ Setup", superOnly:true },
 ];
 
 // ── Multi-select + search column filter ──
@@ -2299,52 +2298,49 @@ function TeamsView({ user, agents }) {
         {loading ? <div style={{padding:60,textAlign:"center"}}><Spin/></div> : teams.length===0 ? <div className="t-empty">No teams yet.</div> : (
           <div className="t-tbl-wrap">
             <table className="t-tbl">
-              <thead><tr><th>Team Name</th><th>Agents in Use (by team members)</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Team Name</th><th>Agents Assigned</th><th>Actions</th></tr></thead>
               <tbody>
-                {teams.map(t=>{
-                  const teamAgentsUsed = agents.filter(a=>a.active && (
-                    // agents whose createdBy user belongs to this team
-                    a.createdBy && a.createdBy !== ""
-                  )).filter(a=>{
-                    // we can only match by createdBy email — filter shown in tooltip
-                    return (t.agentCodes||[]).includes(a.agentCode) || false;
-                  });
-                  // For display, show agents whose agentCode is in team.agentCodes OR use createdBy team grouping
-                  const displayAgents = agents.filter(a=>(t.agentCodes||[]).includes(a.agentCode));
-                  return (
-                    <tr key={t.id}>
-                      <td><div className="t-tbl nm">{t.name}</div></td>
-                      <td>
-                        {displayAgents.length===0
-                          ? <span style={{fontSize:10,color:"var(--muted)"}}>No agents directly linked</span>
-                          : displayAgents.map(a=><span key={a.agentCode} className="t-pill t-pill-blue" style={{marginRight:3,marginBottom:2}}>{a.displayName||a.agentCode}</span>)
-                        }
-                        <div style={{fontSize:9,color:"var(--muted)",marginTop:3}}>Agents auto-link by team member activity</div>
-                      </td>
-                      <td><button onClick={()=>setEditing(t)} className="t-btn t-btn-outline t-btn-sm">Edit</button></td>
-                    </tr>
-                  );
-                })}
+                {teams.map(t=>(
+                  <tr key={t.id}>
+                    <td><div className="t-tbl nm">{t.name}</div></td>
+                    <td>{(t.agentCodes||[]).length===0
+                      ? <span style={{fontSize:10,color:"var(--muted)"}}>None assigned</span>
+                      : (t.agentCodes||[]).map(code=>{const a=agents.find(x=>x.agentCode===code);return <span key={code} className="t-pill t-pill-blue" style={{marginRight:3,marginBottom:2}}>{a?a.displayName:code}</span>;})
+                    }</td>
+                    <td><button onClick={()=>setEditing(t)} className="t-btn t-btn-outline t-btn-sm">Edit</button></td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         )}
       </div>
-      {adding&&<TeamModal team={{name:""}} onSave={save} onClose={()=>setAdding(false)} isNew/>}
-      {editing&&<TeamModal team={editing} onSave={save} onClose={()=>setEditing(null)}/>}
+      {adding&&<TeamModal team={{name:"",agentCodes:[]}} agents={agents} onSave={save} onClose={()=>setAdding(false)} isNew/>}
+      {editing&&<TeamModal team={editing} agents={agents} onSave={save} onClose={()=>setEditing(null)}/>}
     </div>
   );
 }
-function TeamModal({ team, onSave, onClose, isNew }) {
-  const [t,setT]=useState({...team});
+function TeamModal({ team, agents, onSave, onClose, isNew }) {
+  const [t,setT]=useState({...team,agentCodes:team.agentCodes||[]});
+  function toggleAgent(code){ const has=t.agentCodes.includes(code); setT({...t,agentCodes:has?t.agentCodes.filter(c=>c!==code):[...t.agentCodes,code]}); }
   return (
     <div className="t-modal-bg">
       <div className="t-modal t-fade">
         <div className="t-modal-hd"><span>{isNew?"Add Team":"Edit Team"}</span><button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:18,lineHeight:1}}>×</button></div>
         <div className="t-modal-body" style={{display:"flex",flexDirection:"column",gap:10}}>
           <div><label className="t-label">Team Name</label><input className="t-input" value={t.name||""} onChange={e=>setT({...t,name:e.target.value})}/></div>
-          <div style={{background:"#f8f8f8",border:"1px solid var(--border)",padding:"10px 12px",fontSize:11,color:"var(--muted)"}}>
-            Agents are automatically linked to teams based on who adds them. Team members' agents appear here read-only.
+          <div>
+            <label className="t-label">Agents This Team May Use</label>
+            <div style={{fontSize:10,color:"var(--muted)",marginBottom:6}}>These agents will be visible to all recruiters in this team.</div>
+            <div style={{border:"1.5px solid var(--black)",maxHeight:200,overflowY:"auto"}}>
+              {(agents||[]).map(a=>(
+                <label key={a.agentCode} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderBottom:"1px solid #f0f0f0",cursor:"pointer",fontSize:12}}>
+                  <input type="checkbox" style={{width:"auto"}} checked={t.agentCodes.includes(a.agentCode)} onChange={()=>toggleAgent(a.agentCode)}/>
+                  <div style={{flex:1}}><div style={{fontWeight:600,fontSize:12}}>{a.displayName||a.agentCode}</div><div style={{fontSize:9,color:"var(--muted)",fontFamily:"var(--fm)"}}>{a.agentCode} · added by {a.createdBy||"unknown"}</div></div>
+                </label>
+              ))}
+              {(agents||[]).length===0 && <div style={{padding:"12px 10px",fontSize:11,color:"var(--muted)"}}>No agents available yet.</div>}
+            </div>
           </div>
         </div>
         <div className="t-modal-footer"><button onClick={onClose} className="t-btn t-btn-outline">Cancel</button><button onClick={()=>onSave(t)} className="t-btn t-btn-black">Save</button></div>
@@ -2886,7 +2882,6 @@ function App() {
   else if(view==="myagents") content=<TLAgentsView user={user} agents={agents} refreshAgents={newAgents=>{setAgents(newAgents);}}/>;
   else if(view==="users") content=<UsersView user={user} teams={teams}/>;
   else if(view==="teams") content=<TeamsView user={user} agents={agents}/>;
-  else if(view==="setup") content=<SetupView/>;
 
   return (
     <>
