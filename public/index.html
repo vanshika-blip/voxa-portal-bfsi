@@ -2416,20 +2416,20 @@ function TLAgentsView({ user, agents: initAgents, refreshAgents }) {
       active: true,
     }});
     setSaving(false);
-    if(!r.ok){ setMsg({type:"err",text:r.message||r.error}); return; }
-    setMsg({type:"ok",text:editAgent?"Agent updated!":"Agent created!"});
+if(!r.ok){ setMsg({type:"error",text:r.message||r.error}); return; }
+setMsg({type:"success",text:editAgent?"Agent updated!":"Agent created!"});
     const me = await api("me",{});
     if(me.ok){ setAgents(me.agents||[]); refreshAgents&&refreshAgents(me.agents||[]); }
     setTimeout(()=>setMode("list"),1200);
   }
 
   async function doAddById(agentId) {
-    if(!agentId.trim()){ setMsg({type:"err",text:"Enter an Agent ID"}); return; }
+    if(!agentId.trim()){ setMsg({type:"error",text:"Enter an Agent ID"}); return; }
     setSaving(true); setMsg({type:"",text:""});
     const r = await api("addAgentById",{agentId:agentId.trim()});
     setSaving(false);
-    if(!r.ok){ setMsg({type:"err",text:r.message||r.error}); return; }
-    setMsg({type:"ok",text:"Agent added to your list!"});
+    if(!r.ok){ setMsg({type:"error",text:r.message||r.error}); return; }
+setMsg({type:"success",text:"Agent added to your list!"});
     const me = await api("me",{});
     if(me.ok){ setAgents(me.agents||[]); refreshAgents&&refreshAgents(me.agents||[]); }
     setTimeout(()=>setMode("list"),1200);
@@ -2559,8 +2559,8 @@ function TLQualEditor({ agent, onBack, onSaved }) {
     const rules=Object.entries(qualRules).filter(([f])=>f).map(([field,keywords])=>({field,keywords}));
     const r=await api("upsertMyAgent",{agent:{...agent,qualificationRules:rules,qualificationField:rules[0]?.field||"",qualificationValues:rules.flatMap(r=>r.keywords),qualificationValue:rules.flatMap(r=>r.keywords)[0]||""}});
     setSaving(false);
-    if(!r.ok){ setMsg({type:"err",text:r.message||r.error}); return; }
-    setMsg({type:"ok",text:"Rules saved!"}); setTimeout(onSaved,900);
+    if(!r.ok){ setMsg({type:"error",text:r.message||r.error}); return; }
+setMsg({type:"success",text:"Rules saved!"}); setTimeout(onSaved,900);
   }
 
   return (
@@ -2608,7 +2608,7 @@ function TLQualEditor({ agent, onBack, onSaved }) {
             </>
           )
         }
-        {msg.text && <div style={{marginBottom:12}}><Alert type={msg.type==="err"?"err":"ok"}>{msg.text}</Alert></div>}
+        {msg.text && <div style={{marginBottom:12}}><Alert type={msg.type==="error"?"error":"success"}>{msg.text}</Alert></div>}
         <div style={{display:"flex",gap:10}}>
           <button className="t-btn t-btn-outline" onClick={onBack}>Cancel</button>
           <button className="t-btn t-btn-black" disabled={saving} onClick={save}>{saving?<Spin/>:"Save Rules"}</button>
@@ -2640,7 +2640,7 @@ function TLAddByIdView({ onBack, onAdd, saving, msg }) {
             {!isEmpty && !isValidUUID ? "⚠ Must be a UUID format (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)" : "Find this in the Hunar dashboard under the agent's settings."}
           </div>
         </div>
-        {msg.text && <div style={{marginBottom:12}}><Alert type={msg.type==="err"?"error":"success"}>{msg.text}</Alert></div>}
+        {msg.text && <div style={{marginBottom:12}}><Alert type={msg.type==="error"?"error":msg.type==="success"?"success":"info"}>{msg.text}</Alert></div>}
         <div style={{display:"flex",gap:10,marginTop:16}}>
           <button className="t-btn t-btn-outline" onClick={onBack}>Cancel</button>
           <button className="t-btn t-btn-black" disabled={saving||!isValidUUID} onClick={()=>onAdd(agentId)}>{saving?<Spin/>:"Add Agent"}</button>
@@ -2814,7 +2814,7 @@ function TLAgentWizard({ user, editAgent, onSave, onBack, saving, msg, setMsg })
                   </>
                 )
               }
-              {msg.text && <div style={{marginBottom:12}}><Alert type={msg.type==="err"?"err":"ok"}>{msg.text}</Alert></div>}
+              {msg.text && <div style={{marginBottom:12}}><Alert type={msg.type==="error"?"error":"success"}>{msg.text}</Alert></div>}
               <div style={{display:"flex",justifyContent:"space-between",paddingTop:8}}><button className="t-btn t-btn-outline" onClick={()=>setStep(3)}>← Back</button><button className="t-btn t-btn-black" disabled={saving} onClick={()=>onSave(form,qualRules)}>{saving?<Spin/>:editAgent?"Update Agent":"Create Agent"}</button></div>
             </div>
             <Preview/>
