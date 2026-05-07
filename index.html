@@ -593,6 +593,7 @@ const NAV_ITEMS = [
   { id:"trigger",   label:"Trigger Campaign" },
   { id:"campaigns", label:"Campaigns" },
   { id:"agents",    label:"Agents", superOnly:true },
+  { id:"myagent",   label:"My Agent", showFor:["team_lead"] },
   { id:"users",     label:"Users", hideFor:["recruiter"] },
   { id:"teams",     label:"Teams", hideFor:["recruiter","team_lead"] },
   { id:"usage",     label:"Usage", hideFor:["recruiter"] },
@@ -816,6 +817,7 @@ function SetupScreen({ token, onCompleted, goLogin }) {
 function Shell({ user, today, onLogout, view, setView, children, onChangePw }) {
   const visible = NAV_ITEMS.filter(n => {
     if(n.superOnly && user.role!=="super_admin") return false;
+    if(n.showFor && !n.showFor.includes(user.role)) return false;
     if(n.hideFor && n.hideFor.includes(user.role)) return false;
     return true;
   });
@@ -1905,6 +1907,565 @@ function AgentEditModal({ agent, onSave, onClose }) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// MY AGENT VIEW — Team Lead full agent creator / editor
+// ─────────────────────────────────────────────────────────────
+const VOICE_PERSONAS = ["NEHA","ROY","ZOE","SAM","MIRA","EESHA"];
+const LANGUAGES      = ["ENGLISH","HINDI","TAMIL","TURKISH","SPANISH","KANNADA","MARATHI","TELUGU"];
+
+function MyAgentView({ user, agents, refreshAgents }) {
+  // myAgent = first agent visible to this TL (their team's agent)
+  const [myAgent, setMyAgent]   = useState(agents && agents.length > 0 ? agents[0] : null);
+  const [mode, setMode]         = useState("overview"); // "overview" | "wizard"
+  const [wizardStep, setWizardStep] = useState(1);
+  const [saving, setSaving]     = useState(false);
+  const [msg, setMsg]           = useState({ type:"", text:"" });
+  const [loading, setLoading]   = useState(false);
+
+  // ── Wizard form state ──
+  const blank = { displayName:"", language:"ENGLISH", voicePersona:"NEHA",
+    objective:"", introduction:"{greeting}, Am I speaking to {callee_name}?",
+    agentPrompt:"", resultPrompt:"", resultFields:[] };
+  const [form, setForm] = useState(() => myAgent ? agentToForm(myAgent) : blank);
+
+  function agentToForm(a) {
+    const rs = a.resultSchema || {};
+    const fields = rs.properties ? Object.keys(rs.properties) : Object.keys(rs).filter(k=>k!=="type"&&k!=="required");
+    return {
+      displayName:  a.displayName || "",
+      language:     a.language    || "ENGLISH",
+      voicePersona: a.voicePersona|| "NEHA",
+      objective:    a.description || "",
+      introduction: "{greeting}, Am I speaking to {callee_name}?",
+      agentPrompt:  "",
+      resultPrompt: "",
+      resultFields: fields.map(f=>({ name:f, expected: (rs.properties?rs.properties[f]?.description:rs[f]) || "" })),
+    };
+  }
+
+  // ── Qual rules state ──
+  const [qualRules, setQualRules] = useState(() => initQualRules(myAgent));
+  const [kwInputs,  setKwInputs]  = useState({});
+
+  function initQualRules(a) {
+    if (!a) return {};
+    const rules = {};
+    if (a.qualificationRules && a.qualificationRules.length) {
+      a.qualificationRules.forEach(r => { if(r.field) rules[r.field] = r.keywords||[]; });
+    } else if (a.qualificationField) {
+      rules[a.qualificationField] = a.qualificationValues||[];
+    }
+    return rules;
+  }
+
+  function resultFieldNames(a) {
+    if (!a) return [];
+    const s = a.resultSchema || {};
+    if (s.properties) return Object.keys(s.properties);
+    return Object.keys(s).filter(k=>k!=="type"&&k!=="required");
+  }
+
+  const resultFields = useMemo(()=>resultFieldNames(myAgent),[myAgent]);
+
+  function toggleQualField(f) {
+    setQualRules(prev=>{ const n={...prev}; if(n[f]!==undefined){delete n[f];}else{n[f]=[];} return n; });
+  }
+  function addKw(field) {
+    const kw=(kwInputs[field]||"").trim(); if(!kw)return;
+    setQualRules(prev=>{ const ex=prev[field]||[]; if(ex.map(k=>k.toLowerCase()).includes(kw.toLowerCase()))return prev; return{...prev,[field]:[...ex,kw]}; });
+    setKwInputs(prev=>({...prev,[field]:""}));
+  }
+  function removeKw(field,kw){ setQualRules(prev=>({...prev,[field]:(prev[field]||[]).filter(k=>k!==kw)})); }
+
+  // add / remove result field rows in form
+  function addResultField() { setForm(f=>({...f,resultFields:[...f.resultFields,{name:"",expected:""}]})); }
+  function updateResultField(i,key,val) { setForm(f=>{ const rf=[...f.resultFields]; rf[i]={...rf[i],[key]:val}; return{...f,resultFields:rf}; }); }
+  function removeResultField(i) { setForm(f=>({...f,resultFields:f.resultFields.filter((_,j)=>j!==i)})); }
+
+  // ── Save to Hunar + GAS ──
+  async function handleSave() {
+    if (!form.displayName || !form.language || !form.voicePersona) {
+      setMsg({type:"err",text:"Name, language and voice persona are required."}); return;
+    }
+    setSaving(true); setMsg({type:"",text:""});
+
+    // Build result_schema from resultFields
+    const resultSchema = {};
+    form.resultFields.filter(f=>f.name.trim()).forEach(f=>{ resultSchema[f.name.trim()] = f.expected.trim()||"string"; });
+
+    // Build qualificationRules from qualRules
+    const rules = Object.entries(qualRules).filter(([f])=>f).map(([field,keywords])=>({field,keywords}));
+    const firstField   = rules[0]?.field||"";
+    const allKeywords  = rules.flatMap(r=>r.keywords);
+
+    const r = await api("upsertMyAgent", {
+      agent: {
+        agentCode:    myAgent?.agentCode || "",   // empty = create new
+        agentId:      myAgent?.agentId   || "",
+        displayName:  form.displayName,
+        description:  form.objective,
+        language:     form.language,
+        voicePersona: form.voicePersona,
+        agentPrompt:  form.agentPrompt,
+        resultPrompt: form.resultPrompt,
+        introduction: form.introduction,
+        objective:    form.objective,
+        resultSchema,
+        qualificationRules:  rules,
+        qualificationField:  firstField,
+        qualificationValues: allKeywords,
+        qualificationValue:  allKeywords[0]||"",
+        active: true,
+      }
+    });
+
+    setSaving(false);
+    if (!r.ok) { setMsg({type:"err",text:r.message||r.error}); return; }
+    setMsg({type:"ok",text: myAgent ? "Agent updated successfully!" : "Agent created and assigned to your team!"});
+    // Refresh agent data
+    setLoading(true);
+    const me = await api("me",{});
+    setLoading(false);
+    if (me.ok && me.agents && me.agents.length>0) {
+      const updated = me.agents[0];
+      setMyAgent(updated);
+      setForm(agentToForm(updated));
+      setQualRules(initQualRules(updated));
+      refreshAgents && refreshAgents(me.agents);
+    }
+    setMode("overview");
+  }
+
+  // ── Step progress bar ──
+  const STEPS = ["Persona Details","Call Agent","Result Agent","Qualification"];
+  function StepBar() {
+    return (
+      <div style={{display:"flex",alignItems:"center",padding:"22px 36px 22px",borderBottom:"1px solid #eee",background:"#fff"}}>
+        {STEPS.map((label,i)=>{
+          const step=i+1, done=wizardStep>step, active=wizardStep===step;
+          return (
+            <React.Fragment key={step}>
+              <div style={{display:"flex",alignItems:"center",gap:10,cursor:done?"pointer":"default",opacity:step>wizardStep+1?.45:1}}
+                onClick={()=>{ if(done||active) setWizardStep(step); }}>
+                <div style={{width:24,height:24,borderRadius:"50%",border:"2px solid",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",
+                  borderColor:active?"var(--black)":done?"var(--green)":"#ccc",
+                  background:done?"var(--green)":active?"var(--black)":"transparent"}}>
+                  {done
+                    ? <span style={{color:"#fff",fontSize:11}}>✓</span>
+                    : <div style={{width:8,height:8,borderRadius:"50%",background:active?"#fff":"transparent"}}/>
+                  }
+                </div>
+                <span style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:12,whiteSpace:"nowrap",
+                  color:active?"var(--black)":done?"var(--green)":"#aaa"}}>{label}</span>
+              </div>
+              {i<STEPS.length-1 && <div style={{flex:1,height:1.5,margin:"0 14px",minWidth:32,background:done?"var(--green)":"#ddd"}}/>}
+            </React.Fragment>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // ── Preview sidebar (shared across steps) ──
+  function PreviewPane() {
+    return (
+      <div style={{width:230,borderLeft:"1.5px solid #eee",padding:"28px 20px",flexShrink:0,background:"#fafafa",minHeight:500}}>
+        <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:10,color:"var(--muted)",letterSpacing:".18em",textTransform:"uppercase",marginBottom:18}}>Preview</div>
+        <div style={{fontFamily:"var(--fd)",fontWeight:900,fontSize:19,marginBottom:18,wordBreak:"break-word"}}>{form.displayName||<span style={{color:"#ccc"}}>Agent Name</span>}</div>
+        <Row icon="🌐" label="Call language" value={form.language||"—"}/>
+        <Row icon="🎙️" label="Voice Persona" value={
+          <span style={{display:"inline-flex",alignItems:"center",gap:5,background:"#efefef",padding:"3px 11px",borderRadius:6,fontSize:12,fontWeight:700}}>{form.voicePersona||"—"} ▷</span>
+        }/>
+        {form.resultFields.filter(f=>f.name).length>0 && (
+          <div style={{marginTop:14}}>
+            <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:10,color:"var(--muted)",letterSpacing:".1em",textTransform:"uppercase",marginBottom:6}}>✓ Result Values</div>
+            {form.resultFields.filter(f=>f.name).map((f,i)=>(
+              <div key={i} style={{fontFamily:"var(--fm)",fontSize:11,color:"#1a6fdc",marginBottom:2}}>{f.name}</div>
+            ))}
+          </div>
+        )}
+        {Object.keys(qualRules).length>0 && (
+          <div style={{marginTop:14}}>
+            <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:10,color:"var(--muted)",letterSpacing:".1em",textTransform:"uppercase",marginBottom:6}}>Qual Rules</div>
+            {Object.entries(qualRules).map(([f,kws])=>(
+              <div key={f} style={{marginBottom:4}}>
+                <span style={{fontFamily:"var(--fm)",fontSize:10,color:"var(--blue)"}}>{f}</span>
+                {kws.length>0 && kws.map(kw=><span key={kw} style={{fontSize:9,background:"#dbeafe",color:"#1e40af",padding:"1px 5px",borderRadius:3,marginLeft:3}}>{kw}</span>)}
+                {kws.length===0 && <span style={{fontSize:9,color:"var(--muted)",marginLeft:4}}>any</span>}
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{marginTop:16}}>
+          <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:10,color:"var(--muted)",letterSpacing:".1em",textTransform:"uppercase",marginBottom:6}}>Preset Variables</div>
+          {["{greeting}","{persona_name}","{callee_name}","{mobile_number}"].map(v=>(
+            <div key={v} style={{fontFamily:"var(--fm)",fontSize:11,color:"#6739b7",marginBottom:2}}>{v}</div>
+          ))}
+        </div>
+      </div>
+    );
+    function Row({icon,label,value}){return(
+      <div style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:14,fontSize:12,color:"var(--muted)"}}>
+        <span style={{fontSize:16,flexShrink:0}}>{icon}</span>
+        <div><div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:10,marginBottom:3}}>{label}</div><div>{value}</div></div>
+      </div>
+    );}
+  }
+
+  // ── Step 1: Persona ──
+  function Step1() {
+    return (
+      <div style={{padding:"32px 36px",maxWidth:560}}>
+        <h2 style={{fontFamily:"var(--fd)",fontWeight:900,fontSize:22,letterSpacing:"-.02em",marginBottom:28}}>Persona Details</h2>
+        <div style={{marginBottom:20}}>
+          <label className="t-label" style={{marginBottom:6}}>What do you want to call this Agent? <span style={{color:"var(--red)"}}>*</span></label>
+          <input className="t-input" style={{borderRadius:8,fontSize:14,padding:"12px 14px"}}
+            placeholder="e.g. Hiring Outreach Agent"
+            value={form.displayName} onChange={e=>setForm({...form,displayName:e.target.value})}/>
+        </div>
+        <div style={{marginBottom:20}}>
+          <label className="t-label" style={{marginBottom:6}}>Choose call language <span style={{color:"var(--red)"}}>*</span></label>
+          <select className="t-select" style={{width:"100%",borderRadius:8,fontSize:14,padding:"11px 14px"}}
+            value={form.language} onChange={e=>setForm({...form,language:e.target.value})}>
+            <option value="">Select…</option>
+            {LANGUAGES.map(l=><option key={l} value={l}>{l.charAt(0)+l.slice(1).toLowerCase()}</option>)}
+          </select>
+        </div>
+        <div style={{marginBottom:32}}>
+          <label className="t-label" style={{marginBottom:8}}>Voice Persona <span style={{color:"var(--red)"}}>*</span></label>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+            {VOICE_PERSONAS.map(p=>(
+              <button key={p} onClick={()=>setForm({...form,voicePersona:p})}
+                style={{padding:"8px 18px",border:"2px solid",borderRadius:20,fontFamily:"var(--fd)",fontWeight:700,fontSize:12,cursor:"pointer",transition:"all .12s",
+                  borderColor:form.voicePersona===p?"var(--black)":"var(--border)",
+                  background:form.voicePersona===p?"var(--black)":"#fff",
+                  color:form.voicePersona===p?"#fff":"var(--black)"}}>
+                {p} {form.voicePersona===p?"▷":""}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between"}}>
+          <button className="t-btn t-btn-outline" style={{borderRadius:8}} onClick={()=>setMode("overview")}>Cancel</button>
+          <button className="t-btn t-btn-black" style={{borderRadius:20,padding:"10px 28px"}}
+            disabled={!form.displayName||!form.language||!form.voicePersona}
+            onClick={()=>setWizardStep(2)}>Proceed to Call Agent Set Up →</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Step 2: Call Agent ──
+  function Step2() {
+    const PROMPT_HINT = `1. My Identity\nYour name, role, personality, tone.\n\n2. Context\nWho you're calling, why, what company/job.\n\n3. Conversation Flow\n• Opening after intro\n• Key questions\n• Handling objections\n• How to qualify/disqualify\n• How to close`;
+    return (
+      <div style={{display:"flex",flex:1,minHeight:0}}>
+        <div style={{flex:1,padding:"32px 36px",overflowY:"auto"}}>
+          <h2 style={{fontFamily:"var(--fd)",fontWeight:900,fontSize:22,letterSpacing:"-.02em",marginBottom:28}}>Set Up Call Agent</h2>
+          <div style={{marginBottom:16}}>
+            <label className="t-label" style={{marginBottom:6}}>What is the objective of this call? <span style={{color:"var(--red)"}}>*</span></label>
+            <input className="t-input" style={{fontSize:13,padding:"10px 12px"}} maxLength={140}
+              placeholder="e.g. Qualify candidates for field sales roles in Bangalore"
+              value={form.objective} onChange={e=>setForm({...form,objective:e.target.value})}/>
+            <div style={{textAlign:"right",fontSize:10,color:"var(--muted)",marginTop:2}}>{form.objective.length}/140</div>
+          </div>
+          <div style={{marginBottom:16}}>
+            <label className="t-label" style={{marginBottom:6}}>Introductory Statement <span style={{color:"var(--red)"}}>*</span></label>
+            <input className="t-input" style={{fontSize:13,padding:"10px 12px",color:"#6739b7"}} maxLength={140}
+              value={form.introduction} onChange={e=>setForm({...form,introduction:e.target.value})}/>
+            <div style={{fontSize:10,color:"var(--muted)",marginTop:3}}>Use <code style={{background:"#f0f0f0",padding:"1px 4px"}}>{"{greeting}"}</code>, <code style={{background:"#f0f0f0",padding:"1px 4px"}}>{"{callee_name}"}</code> as variables.</div>
+          </div>
+          <div style={{marginBottom:24}}>
+            <label className="t-label" style={{marginBottom:6}}>Call Prompt <span style={{color:"var(--red)"}}>*</span></label>
+            <div style={{background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:4,padding:"8px 12px",fontSize:11,color:"#92400e",marginBottom:8,lineHeight:1.5}}>
+              📌 Define the agent persona, context of the conversation, and the expected call flow. Be specific — the AI follows this exactly.
+            </div>
+            <textarea className="t-input" rows={16}
+              style={{fontSize:12,fontFamily:"var(--fm)",resize:"vertical",lineHeight:1.6}}
+              placeholder={PROMPT_HINT}
+              value={form.agentPrompt} onChange={e=>setForm({...form,agentPrompt:e.target.value})}/>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between"}}>
+            <button className="t-btn t-btn-outline" style={{borderRadius:8}} onClick={()=>setWizardStep(1)}>← Previous Step</button>
+            <button className="t-btn t-btn-black" style={{borderRadius:8,padding:"10px 24px"}}
+              disabled={!form.objective||!form.introduction||!form.agentPrompt}
+              onClick={()=>setWizardStep(3)}>Proceed to Result Agent Set Up →</button>
+          </div>
+        </div>
+        <PreviewPane/>
+      </div>
+    );
+  }
+
+  // ── Step 3: Result Agent ──
+  function Step3() {
+    const RESULT_HINT = `Your Role\nYou evaluate a call between a recruiter agent and a candidate.\nYour job:\n• Understand what happened\n• Extract key info\n• Fill the result fields accurately\nDo not add opinions beyond what was said.`;
+    return (
+      <div style={{display:"flex",flex:1,minHeight:0}}>
+        <div style={{flex:1,padding:"32px 36px",overflowY:"auto"}}>
+          <h2 style={{fontFamily:"var(--fd)",fontWeight:900,fontSize:22,letterSpacing:"-.02em",marginBottom:8}}>Result Agent Set Up</h2>
+          <p style={{fontSize:12,color:"var(--muted)",marginBottom:24,lineHeight:1.6}}>Define what data you want to extract from each call. These become columns in your tracking sheet.</p>
+
+          {/* Result fields table */}
+          <div style={{marginBottom:24}}>
+            <label className="t-label" style={{marginBottom:8}}>Result Values <span style={{color:"var(--red)"}}>*</span></label>
+            <div style={{border:"1.5px solid var(--black)",overflow:"hidden"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                <thead>
+                  <tr style={{background:"var(--black)"}}>
+                    <th style={{padding:"8px 12px",fontFamily:"var(--fd)",fontWeight:700,fontSize:9,letterSpacing:".15em",textTransform:"uppercase",color:"#fff",textAlign:"left",width:40}}>No</th>
+                    <th style={{padding:"8px 12px",fontFamily:"var(--fd)",fontWeight:700,fontSize:9,letterSpacing:".15em",textTransform:"uppercase",color:"#fff",textAlign:"left"}}>Column Name</th>
+                    <th style={{padding:"8px 12px",fontFamily:"var(--fd)",fontWeight:700,fontSize:9,letterSpacing:".15em",textTransform:"uppercase",color:"#fff",textAlign:"left"}}>Expected Values / Description</th>
+                    <th style={{width:36}}/>
+                  </tr>
+                </thead>
+                <tbody>
+                  {form.resultFields.map((rf,i)=>(
+                    <tr key={i} style={{borderBottom:"1px solid #eee"}}>
+                      <td style={{padding:"6px 12px",color:"var(--muted)",fontFamily:"var(--fm)"}}>{i+1}.</td>
+                      <td style={{padding:"4px 8px"}}>
+                        <input className="t-input" style={{fontSize:12,padding:"6px 8px",border:"1px solid #eee"}}
+                          placeholder="e.g. interested" value={rf.name}
+                          onChange={e=>updateResultField(i,"name",e.target.value)}/>
+                      </td>
+                      <td style={{padding:"4px 8px"}}>
+                        <input className="t-input" style={{fontSize:12,padding:"6px 8px",border:"1px solid #eee"}}
+                          placeholder="e.g. Yes / No / Maybe" value={rf.expected}
+                          onChange={e=>updateResultField(i,"expected",e.target.value)}/>
+                      </td>
+                      <td style={{padding:"4px 8px",textAlign:"center"}}>
+                        <button onClick={()=>removeResultField(i)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--muted)",fontSize:16,lineHeight:1}}>×</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button className="t-btn t-btn-outline t-btn-sm" style={{marginTop:8}} onClick={addResultField}>+ Add More</button>
+          </div>
+
+          {/* Result prompt */}
+          <div style={{marginBottom:24}}>
+            <label className="t-label" style={{marginBottom:6}}>Result Prompt <span style={{color:"var(--red)"}}>*</span></label>
+            <div style={{background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:4,padding:"8px 12px",fontSize:11,color:"#92400e",marginBottom:8,lineHeight:1.5}}>
+              📌 Instruct the AI on how to analyse the call and fill each result field. Explain what each value means so it fills them accurately.
+            </div>
+            <textarea className="t-input" rows={12}
+              style={{fontSize:12,fontFamily:"var(--fm)",resize:"vertical",lineHeight:1.6}}
+              placeholder={RESULT_HINT}
+              value={form.resultPrompt} onChange={e=>setForm({...form,resultPrompt:e.target.value})}/>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between"}}>
+            <button className="t-btn t-btn-outline" style={{borderRadius:8}} onClick={()=>setWizardStep(2)}>← Previous Step</button>
+            <button className="t-btn t-btn-black" style={{borderRadius:8,padding:"10px 24px"}}
+              disabled={form.resultFields.filter(f=>f.name).length===0||!form.resultPrompt}
+              onClick={()=>setWizardStep(4)}>Proceed to Qualification →</button>
+          </div>
+        </div>
+        <PreviewPane/>
+      </div>
+    );
+  }
+
+  // ── Step 4: Qualification Rules ──
+  function Step4() {
+    const definedFields = form.resultFields.filter(f=>f.name.trim()).map(f=>f.name.trim());
+    return (
+      <div style={{display:"flex",flex:1,minHeight:0}}>
+        <div style={{flex:1,padding:"32px 36px",overflowY:"auto"}}>
+          <h2 style={{fontFamily:"var(--fd)",fontWeight:900,fontSize:22,letterSpacing:"-.02em",marginBottom:8}}>Qualification Rules</h2>
+          <p style={{fontSize:12,color:"var(--muted)",marginBottom:24,lineHeight:1.6}}>
+            Choose which result fields determine a qualified lead, and what keyword values in those fields count as qualified.
+          </p>
+
+          {definedFields.length===0
+            ? <div style={{padding:20,background:"#fff8f0",border:"1px solid #fcd34d",fontSize:12,color:"#92400e",borderRadius:4,marginBottom:24}}>
+                ← Go back to Result Agent and define at least one result field first.
+              </div>
+            : (
+              <>
+                <div style={{border:"1.5px solid var(--black)",background:"#fff",marginBottom:16}}>
+                  <div style={{padding:"8px 14px",background:"#f5f5f5",borderBottom:"1px solid #eee",fontFamily:"var(--fd)",fontWeight:700,fontSize:9,letterSpacing:".18em",textTransform:"uppercase",color:"var(--muted)"}}>
+                    Select which fields to qualify on
+                  </div>
+                  {definedFields.map(f=>{
+                    const isSel = qualRules[f]!==undefined;
+                    return (
+                      <label key={f} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderBottom:"1px solid #f5f5f5",cursor:"pointer",background:isSel?"#f0f5ff":"transparent"}}>
+                        <input type="checkbox" checked={isSel} onChange={()=>toggleQualField(f)} style={{width:14,height:14}}/>
+                        <span style={{flex:1,fontFamily:"var(--fm)",fontSize:13}}>{f}</span>
+                        {isSel && <span style={{fontSize:9,fontFamily:"var(--fd)",fontWeight:700,color:"var(--blue)",letterSpacing:".08em"}}>ACTIVE</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+
+                {Object.keys(qualRules).map(field=>{
+                  const kws=qualRules[field]||[];
+                  return (
+                    <div key={field} style={{border:"1.5px solid #0066b3",padding:"12px 14px",marginBottom:12,background:"#f0f8ff"}}>
+                      <div style={{fontFamily:"var(--fm)",fontSize:13,fontWeight:700,color:"var(--blue)",marginBottom:4}}>{field}</div>
+                      <div style={{fontSize:11,color:"var(--muted)",marginBottom:8}}>A lead is qualified if this field's value contains any of these keywords. Leave empty to qualify on any non-empty value.</div>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:8}}>
+                        {kws.map(kw=>(
+                          <span key={kw} className="t-kwtag">~{kw}
+                            <button className="t-kwtag-rm" onClick={()=>removeKw(field,kw)}>×</button>
+                          </span>
+                        ))}
+                        {kws.length===0 && <span style={{fontSize:11,color:"var(--muted)",fontStyle:"italic"}}>Any non-empty value qualifies</span>}
+                      </div>
+                      <div style={{display:"flex",gap:6}}>
+                        <input className="t-input" style={{flex:1,fontSize:12,padding:"6px 10px"}}
+                          value={kwInputs[field]||""} placeholder="e.g. yes, interested, confirmed…"
+                          onChange={e=>setKwInputs(prev=>({...prev,[field]:e.target.value}))}
+                          onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addKw(field);}}}/>
+                        <button className="t-btn t-btn-black t-btn-sm" onClick={()=>addKw(field)}>+ Add</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            )
+          }
+
+          {msg.text && <div style={{marginBottom:16}}><Alert type={msg.type==="err"?"err":"ok"}>{msg.text}</Alert></div>}
+
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:8}}>
+            <button className="t-btn t-btn-outline" style={{borderRadius:8}} onClick={()=>setWizardStep(3)}>← Previous Step</button>
+            <button className="t-btn t-btn-black" style={{borderRadius:8,padding:"10px 32px",fontSize:12}}
+              disabled={saving} onClick={handleSave}>
+              {saving ? <Spin/> : myAgent ? "Update Agent" : "Create Agent"}
+            </button>
+          </div>
+        </div>
+        <PreviewPane/>
+      </div>
+    );
+  }
+
+  // ── Overview ──
+  if (mode==="overview") {
+    return (
+      <div className="t-fade">
+        <div className="t-mast">
+          <div>
+            <div className="t-mast-title">My Agent</div>
+            <div className="t-mast-sub">{myAgent ? `${myAgent.displayName} · ${myAgent.agentCode}` : "No agent configured yet"}</div>
+          </div>
+          <button className="t-btn t-btn-outline" style={{color:"var(--black)",borderColor:"var(--black)"}}
+            onClick={()=>{ if(myAgent)setForm(agentToForm(myAgent)); setQualRules(initQualRules(myAgent)); setWizardStep(1); setMode("wizard"); setMsg({type:"",text:""}); }}>
+            {myAgent ? "Edit Agent" : "Create Agent"}
+          </button>
+        </div>
+
+        {!myAgent ? (
+          <div style={{maxWidth:480,margin:"64px auto",textAlign:"center",padding:24}}>
+            <div style={{fontSize:56,marginBottom:16}}>🤖</div>
+            <div style={{fontFamily:"var(--fd)",fontWeight:900,fontSize:22,marginBottom:8}}>No Agent Yet</div>
+            <div style={{fontSize:13,color:"var(--muted)",marginBottom:28,lineHeight:1.7}}>
+              Create your team's calling agent — define its persona, call script, result tracking, and qualification logic.
+            </div>
+            <button className="t-btn t-btn-black" style={{padding:"12px 32px",borderRadius:20,fontSize:12}}
+              onClick={()=>{ setForm(blank); setQualRules({}); setWizardStep(1); setMode("wizard"); setMsg({type:"",text:""}); }}>
+              + Create My Agent
+            </button>
+          </div>
+        ) : (
+          <div style={{padding:24,display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,maxWidth:960}}>
+
+            {/* Agent profile */}
+            <div style={{border:"1.5px solid var(--black)",gridColumn:"1/-1"}}>
+              <div style={{background:"var(--black)",color:"#fff",padding:"10px 16px",fontFamily:"var(--fd)",fontWeight:900,fontSize:11,letterSpacing:".12em",textTransform:"uppercase",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span>Agent Profile</span>
+                <span style={{opacity:.5,fontFamily:"var(--fm)",fontSize:10}}>{myAgent.agentCode}</span>
+              </div>
+              <div style={{padding:"16px 18px",display:"flex",gap:18,alignItems:"flex-start"}}>
+                <div style={{width:54,height:54,borderRadius:12,background:"linear-gradient(135deg,#6739b7,#1a6fdc)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:26}}>🎙️</div>
+                <div style={{flex:1}}>
+                  <div style={{fontFamily:"var(--fd)",fontWeight:900,fontSize:20,marginBottom:4}}>{myAgent.displayName}</div>
+                  <div style={{fontSize:12,color:"var(--muted)",lineHeight:1.6,marginBottom:10}}>{myAgent.description||"No description."}</div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    <span className="t-pill t-pill-blue">{myAgent.language}</span>
+                    {myAgent.active ? <span className="t-pill t-pill-done">Active</span> : <span className="t-pill t-pill-arch">Inactive</span>}
+                    {myAgent.voicePersona && <span className="t-pill t-pill-gray">{myAgent.voicePersona}</span>}
+                  </div>
+                </div>
+                <button className="t-btn t-btn-outline t-btn-sm" onClick={()=>{ setForm(agentToForm(myAgent)); setQualRules(initQualRules(myAgent)); setWizardStep(1); setMode("wizard"); setMsg({type:"",text:""}); }}>Edit</button>
+              </div>
+            </div>
+
+            {/* Input variables */}
+            <div style={{border:"1.5px solid var(--border)"}}>
+              <div style={{background:"#f5f5f5",padding:"8px 14px",fontFamily:"var(--fd)",fontWeight:900,fontSize:10,letterSpacing:".12em",textTransform:"uppercase",borderBottom:"1px solid #eee"}}>Input Variables</div>
+              <div style={{padding:"12px 14px"}}>
+                {(myAgent.customVariables||[]).length===0
+                  ? <div style={{fontSize:11,color:"var(--muted)",fontStyle:"italic"}}>No custom variables.</div>
+                  : (myAgent.customVariables||[]).map(v=>(
+                      <div key={v} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:"1px solid #f5f5f5",fontSize:12}}>
+                        <span style={{fontFamily:"var(--fm)"}}>{v}</span>
+                        <span className="t-pill t-pill-gray" style={{fontSize:8}}>required in upload</span>
+                      </div>
+                    ))
+                }
+              </div>
+            </div>
+
+            {/* Qual rules */}
+            <div style={{border:"1.5px solid var(--border)"}}>
+              <div style={{background:"#f5f5f5",padding:"8px 14px",fontFamily:"var(--fd)",fontWeight:900,fontSize:10,letterSpacing:".12em",textTransform:"uppercase",borderBottom:"1px solid #eee",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span>Qualification Rules</span>
+                <button className="t-btn t-btn-black t-btn-sm" onClick={()=>{ setForm(agentToForm(myAgent)); setQualRules(initQualRules(myAgent)); setWizardStep(4); setMode("wizard"); setMsg({type:"",text:""}); }}>Edit Rules</button>
+              </div>
+              <div style={{padding:"12px 14px"}}>
+                {Object.keys(qualRules).length===0
+                  ? <div style={{fontSize:11,color:"var(--muted)",fontStyle:"italic"}}>Not set — click Edit Rules to configure.</div>
+                  : Object.entries(qualRules).map(([f,kws])=>(
+                      <div key={f} style={{marginBottom:10}}>
+                        <div style={{fontFamily:"var(--fm)",fontSize:12,fontWeight:700,color:"var(--blue)",marginBottom:4}}>{f}</div>
+                        {kws.length===0
+                          ? <span style={{fontSize:11,color:"var(--muted)"}}>Any value → qualified</span>
+                          : <div style={{display:"flex",flexWrap:"wrap",gap:3}}>{kws.map(kw=><span key={kw} className="t-kwtag">~{kw}</span>)}</div>
+                        }
+                      </div>
+                    ))
+                }
+              </div>
+            </div>
+
+            {/* Result schema */}
+            {resultFields.length>0 && (
+              <div style={{border:"1.5px solid var(--border)",gridColumn:"1/-1"}}>
+                <div style={{background:"#f5f5f5",padding:"8px 14px",fontFamily:"var(--fd)",fontWeight:900,fontSize:10,letterSpacing:".12em",textTransform:"uppercase",borderBottom:"1px solid #eee"}}>Result Schema Fields</div>
+                <div style={{padding:"12px 14px",display:"flex",flexWrap:"wrap",gap:6}}>
+                  {resultFields.map(f=><span key={f} className="t-pill t-pill-blue" style={{fontFamily:"var(--fm)"}}>{f}</span>)}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Wizard ──
+  return (
+    <div className="t-fade" style={{display:"flex",flexDirection:"column",height:"calc(100vh - 48px)",overflow:"hidden"}}>
+      <div style={{background:"#fff",borderBottom:"1.5px solid #eee",padding:"12px 24px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+        <button style={{background:"none",border:"none",cursor:"pointer",fontFamily:"var(--fd)",fontWeight:700,fontSize:12,display:"flex",alignItems:"center",gap:6,color:"var(--black)"}}
+          onClick={()=>setMode("overview")}>← Back</button>
+        <span style={{fontFamily:"var(--fd)",fontWeight:900,fontSize:14}}>{myAgent?"Edit Agent":"Create New Agent"}</span>
+      </div>
+      <StepBar/>
+      <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",background:"#fff"}}>
+        {wizardStep===1 && <Step1/>}
+        {wizardStep===2 && <Step2/>}
+        {wizardStep===3 && <Step3/>}
+        {wizardStep===4 && <Step4/>}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 // USERS VIEW
 // ─────────────────────────────────────────────────────────────
 function UsersView({ user, teams }) {
@@ -2373,6 +2934,7 @@ function App() {
   else if(view==="trigger") content=<UploadView user={user} agents={agents} refreshMe={refreshMe}/>;
   else if(view==="campaigns") content=<CampaignsView agents={agents} user={user} teams={teams} onViewLeads={onViewLeads}/>;
   else if(view==="agents") content=<AgentsView onChange={setAgents}/>;
+  else if(view==="myagent") content=<MyAgentView user={user} agents={agents} refreshAgents={setAgents}/>;
   else if(view==="users") content=<UsersView user={user} teams={teams}/>;
   else if(view==="teams") content=<TeamsView user={user} agents={agents}/>;
   else if(view==="usage") content=<UsageView/>;
