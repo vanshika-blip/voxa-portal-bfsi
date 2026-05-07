@@ -2069,7 +2069,7 @@ function AgentsView({ onChange, users }) {
           {Object.keys(teamAgents).length===0 && <div className="t-empty">No agents yet.</div>}
         </div>
       )}
-      {viewMode==="all" && <div className="t-board">
+      {viewMode==="all" && (<div className="t-board">
         <div className="t-board-hd"><h2 className="t-board-hd-title">All Agents</h2><span className="t-board-meta">{agents.length} agents</span></div>
         {loading ? <div style={{padding:60,textAlign:"center"}}><Spin/></div> : agents.length===0 ? (
           <div className="t-empty">No agents yet. Click <b>Sync from Hunar</b> to import.</div>
@@ -2110,8 +2110,7 @@ function AgentsView({ onChange, users }) {
             </table>
           </div>
         )}
-      </div>
-      </div>}
+      </div>)}
       {editing && <AgentEditModal agent={editing} onSave={save} onClose={()=>setEditing(null)}/>}
     </div>
   );
