@@ -581,6 +581,7 @@ const NAV_ITEMS = [
   { id:"myagents",  label:"Agents", showFor:["team_lead","individual_contributor"] },
   { id:"users",     label:"Users", hideFor:["recruiter","individual_contributor"] },
   { id:"teams",     label:"Teams", hideFor:["recruiter","team_lead","individual_contributor"] },
+  { id:"setup",     label:"⚙ Setup", superOnly:true },
 ];
 
 // ── Multi-select + search column filter ──
@@ -1996,23 +1997,79 @@ function CampaignNotConnectedTab({ campaign }) {
 // ─────────────────────────────────────────────────────────────
 // AGENTS VIEW (super_admin)
 // ─────────────────────────────────────────────────────────────
-function AgentsView({ onChange }) {
+function AgentsView({ onChange, users }) {
   const [agents,setAgents]=useState([]); const [loading,setLoading]=useState(true);
   const [busy,setBusy]=useState(false); const [editing,setEditing]=useState(null); const [msg,setMsg]=useState("");
+  const [viewMode,setViewMode]=useState("all"); // "all" | "byteam"
   async function refresh(){ setLoading(true); const r=await api("listAgents",{}); setLoading(false); if(r.ok){setAgents(r.agents||[]);onChange&&onChange(r.agents||[]);} }
   useEffect(()=>{refresh();},[]);
   async function sync(){ setBusy(true); setMsg(""); const r=await api("syncAgents",{}); setBusy(false); if(!r.ok)return setMsg("Sync failed: "+(r.message||r.error)); setMsg("Synced "+r.synced+" agents."); refresh(); }
   async function save(a){ const r=await api("upsertAgent",{agent:a}); if(!r.ok)return alert(r.message||r.error); setEditing(null); refresh(); }
   async function toggleActive(a){ await api("upsertAgent",{agent:{agentCode:a.agentCode,active:!a.active}}); refresh(); }
   const active=agents.filter(a=>a.active).length;
+  // Build per-team agent breakdown from createdBy
+  const teamAgents = useMemo(()=>{
+    const emailToTeam = {};
+    (users||[]).forEach(u=>{ if(u.team && u.email) emailToTeam[u.email.toLowerCase()]=u.team; });
+    const byTeam = {};
+    agents.forEach(a=>{
+      const team = emailToTeam[(a.createdBy||"").toLowerCase()] || "(unassigned)";
+      if(!byTeam[team]) byTeam[team]=[];
+      byTeam[team].push(a);
+    });
+    return byTeam;
+  },[agents,users]);
   return (
     <div className="t-fade">
       <div className="t-mast">
         <div><div className="t-mast-title">Agents</div><div className="t-mast-sub">{agents.length} total · {active} active</div></div>
-        <button onClick={sync} disabled={busy} className="t-btn t-btn-outline" style={{color:"var(--black)",borderColor:"var(--black)"}}>{busy?<Spin/>:"Sync from Hunar"}</button>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={sync} disabled={busy} className="t-btn t-btn-outline" style={{color:"var(--black)",borderColor:"var(--black)"}}>{busy?<Spin/>:"Sync from Hunar"}</button>
+        </div>
       </div>
       {msg && <div style={{padding:"10px 20px"}}><Alert type="info">{msg}</Alert></div>}
-      <div className="t-board">
+      <div style={{padding:"0 20px",display:"flex",gap:0,borderBottom:"2px solid var(--border)",background:"#fff"}}>
+        {[{id:"all",label:"All Agents"},{id:"byteam",label:"By Team"}].map(t=>(
+          <button key={t.id} onClick={()=>setViewMode(t.id)} style={{padding:"10px 18px",fontFamily:"var(--fd)",fontWeight:700,fontSize:11,letterSpacing:".08em",border:"none",borderBottom:viewMode===t.id?"2.5px solid var(--black)":"2.5px solid transparent",background:"none",cursor:"pointer",color:viewMode===t.id?"var(--black)":"var(--muted)"}}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {viewMode==="byteam" && (
+        <div style={{padding:20}}>
+          {Object.keys(teamAgents).sort((a,b)=>a==="(unassigned)"?1:b==="(unassigned)"?-1:a.localeCompare(b)).map(teamName=>(
+            <div key={teamName} style={{marginBottom:24,border:"1.5px solid var(--border)",borderRadius:4,overflow:"hidden"}}>
+              <div style={{background:"var(--black)",color:"#fff",padding:"10px 16px",fontFamily:"var(--fd)",fontWeight:900,fontSize:12,letterSpacing:".12em",textTransform:"uppercase",display:"flex",alignItems:"center",gap:10}}>
+                <span>{teamName}</span>
+                <span style={{fontWeight:400,opacity:.6,fontSize:10,letterSpacing:".05em"}}>{teamAgents[teamName].filter(a=>a.active).length} active · {teamAgents[teamName].length} total</span>
+              </div>
+              <div style={{padding:12,display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:10}}>
+                {teamAgents[teamName].map(a=>(
+                  <div key={a.agentCode} style={{background:"#fafafa",border:"1.5px solid #e8e8e8",borderRadius:6,padding:"12px 14px"}}>
+                    <div style={{fontFamily:"var(--fd)",fontWeight:900,fontSize:13,marginBottom:3,display:"flex",alignItems:"center",gap:8}}>
+                      {a.displayName}
+                      {a.active?<span className="t-pill t-pill-done" style={{fontSize:7}}>Live</span>:<span className="t-pill t-pill-arch" style={{fontSize:7}}>Off</span>}
+                    </div>
+                    <div style={{fontFamily:"var(--fm)",fontSize:10,color:"var(--muted)",marginBottom:4}}>{a.agentCode}</div>
+                    <div style={{fontSize:10,color:"#888"}}>Added by: <b style={{color:"var(--black)"}}>{a.createdBy||"—"}</b></div>
+                    {(a.qualificationRules||[]).length>0 ? (
+                      <div style={{marginTop:4,fontSize:9,color:"var(--green)",fontWeight:700}}>✓ {(a.qualificationRules||[]).length} qual rule{(a.qualificationRules||[]).length!==1?"s":""}</div>
+                    ) : (
+                      <div style={{marginTop:4,fontSize:9,color:"var(--muted)"}}>No qual rules</div>
+                    )}
+                    <div style={{marginTop:8,display:"flex",gap:6}}>
+                      <button onClick={()=>setEditing(a)} className="t-btn t-btn-outline t-btn-sm">Edit</button>
+                      <button onClick={()=>toggleActive(a)} className="t-btn t-btn-outline t-btn-sm">{a.active?"Deactivate":"Activate"}</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+          {Object.keys(teamAgents).length===0 && <div className="t-empty">No agents yet.</div>}
+        </div>
+      )}
+      {viewMode==="all" && <div className="t-board">
         <div className="t-board-hd"><h2 className="t-board-hd-title">All Agents</h2><span className="t-board-meta">{agents.length} agents</span></div>
         {loading ? <div style={{padding:60,textAlign:"center"}}><Spin/></div> : agents.length===0 ? (
           <div className="t-empty">No agents yet. Click <b>Sync from Hunar</b> to import.</div>
@@ -2054,6 +2111,7 @@ function AgentsView({ onChange }) {
           </div>
         )}
       </div>
+      </div>}
       {editing && <AgentEditModal agent={editing} onSave={save} onClose={()=>setEditing(null)}/>}
     </div>
   );
@@ -2242,44 +2300,52 @@ function TeamsView({ user, agents }) {
         {loading ? <div style={{padding:60,textAlign:"center"}}><Spin/></div> : teams.length===0 ? <div className="t-empty">No teams yet.</div> : (
           <div className="t-tbl-wrap">
             <table className="t-tbl">
-              <thead><tr><th>Team Name</th><th>Agents Assigned</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Team Name</th><th>Agents in Use (by team members)</th><th>Actions</th></tr></thead>
               <tbody>
-                {teams.map(t=>(
-                  <tr key={t.id}>
-                    <td><div className="t-tbl nm">{t.name}</div></td>
-                    <td>{(t.agentCodes||[]).map(code=>{const a=agents.find(x=>x.agentCode===code);return <span key={code} className="t-pill t-pill-blue" style={{marginRight:3,marginBottom:2}}>{a?a.displayName:code}</span>;})}</td>
-                    <td><button onClick={()=>setEditing(t)} className="t-btn t-btn-outline t-btn-sm">Edit</button></td>
-                  </tr>
-                ))}
+                {teams.map(t=>{
+                  const teamAgentsUsed = agents.filter(a=>a.active && (
+                    // agents whose createdBy user belongs to this team
+                    a.createdBy && a.createdBy !== ""
+                  )).filter(a=>{
+                    // we can only match by createdBy email — filter shown in tooltip
+                    return (t.agentCodes||[]).includes(a.agentCode) || false;
+                  });
+                  // For display, show agents whose agentCode is in team.agentCodes OR use createdBy team grouping
+                  const displayAgents = agents.filter(a=>(t.agentCodes||[]).includes(a.agentCode));
+                  return (
+                    <tr key={t.id}>
+                      <td><div className="t-tbl nm">{t.name}</div></td>
+                      <td>
+                        {displayAgents.length===0
+                          ? <span style={{fontSize:10,color:"var(--muted)"}}>No agents directly linked</span>
+                          : displayAgents.map(a=><span key={a.agentCode} className="t-pill t-pill-blue" style={{marginRight:3,marginBottom:2}}>{a.displayName||a.agentCode}</span>)
+                        }
+                        <div style={{fontSize:9,color:"var(--muted)",marginTop:3}}>Agents auto-link by team member activity</div>
+                      </td>
+                      <td><button onClick={()=>setEditing(t)} className="t-btn t-btn-outline t-btn-sm">Edit</button></td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
-      {adding&&<TeamModal team={{name:"",agentCodes:[]}} agents={agents} onSave={save} onClose={()=>setAdding(false)} isNew/>}
-      {editing&&<TeamModal team={editing} agents={agents} onSave={save} onClose={()=>setEditing(null)}/>}
+      {adding&&<TeamModal team={{name:""}} onSave={save} onClose={()=>setAdding(false)} isNew/>}
+      {editing&&<TeamModal team={editing} onSave={save} onClose={()=>setEditing(null)}/>}
     </div>
   );
 }
-function TeamModal({ team, agents, onSave, onClose, isNew }) {
-  const [t,setT]=useState({...team,agentCodes:team.agentCodes||[]});
-  function toggleAgent(code){ const has=t.agentCodes.includes(code); setT({...t,agentCodes:has?t.agentCodes.filter(c=>c!==code):[...t.agentCodes,code]}); }
+function TeamModal({ team, onSave, onClose, isNew }) {
+  const [t,setT]=useState({...team});
   return (
     <div className="t-modal-bg">
       <div className="t-modal t-fade">
         <div className="t-modal-hd"><span>{isNew?"Add Team":"Edit Team"}</span><button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:18,lineHeight:1}}>×</button></div>
         <div className="t-modal-body" style={{display:"flex",flexDirection:"column",gap:10}}>
           <div><label className="t-label">Team Name</label><input className="t-input" value={t.name||""} onChange={e=>setT({...t,name:e.target.value})}/></div>
-          <div>
-            <label className="t-label">Agents This Team May Run</label>
-            <div style={{border:"1.5px solid var(--black)",maxHeight:200,overflowY:"auto"}}>
-              {agents.map(a=>(
-                <label key={a.agentCode} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderBottom:"1px solid #f0f0f0",cursor:"pointer",fontSize:12}}>
-                  <input type="checkbox" style={{width:"auto"}} checked={t.agentCodes.includes(a.agentCode)} onChange={()=>toggleAgent(a.agentCode)}/>
-                  <div style={{flex:1}}><div style={{fontWeight:600,fontSize:12}}>{a.displayName}</div><div style={{fontSize:9,color:"var(--muted)",fontFamily:"var(--fm)"}}>{a.agentCode} · {a.active?"active":"inactive"}</div></div>
-                </label>
-              ))}
-            </div>
+          <div style={{background:"#f8f8f8",border:"1px solid var(--border)",padding:"10px 12px",fontSize:11,color:"var(--muted)"}}>
+            Agents are automatically linked to teams based on who adds them. Team members' agents appear here read-only.
           </div>
         </div>
         <div className="t-modal-footer"><button onClick={onClose} className="t-btn t-btn-outline">Cancel</button><button onClick={()=>onSave(t)} className="t-btn t-btn-black">Save</button></div>
@@ -2817,10 +2883,11 @@ function App() {
   else if(view==="leads") content=<LeadsView user={user} users={users} agents={agents} teams={teams} initialFilter={leadsFilter} onClearFilter={()=>setLeadsFilter(null)}/>;
   else if(view==="trigger") content=<UploadView user={user} agents={agents} refreshMe={refreshMe}/>;
   else if(view==="campaigns") content=<CampaignsView agents={agents} user={user} teams={teams} onViewLeads={onViewLeads}/>;
-  else if(view==="agents") content=<AgentsView onChange={setAgents}/>;
+  else if(view==="agents") content=<AgentsView onChange={setAgents} users={users}/>;
   else if(view==="myagents") content=<TLAgentsView user={user} agents={agents} refreshAgents={newAgents=>{setAgents(newAgents);}}/>;
   else if(view==="users") content=<UsersView user={user} teams={teams}/>;
   else if(view==="teams") content=<TeamsView user={user} agents={agents}/>;
+  else if(view==="setup") content=<SetupView/>;
 
   return (
     <>
@@ -2829,6 +2896,118 @@ function App() {
       </Shell>
       {showChangePw && <ChangePasswordModal onClose={()=>setShowChangePw(false)}/>}
     </>
+  );
+}
+
+
+// ─────────────────────────────────────────────────────────────
+// SETUP / DATABASE MIGRATION VIEW (super admin only)
+// ─────────────────────────────────────────────────────────────
+function SetupView() {
+  const [statuses, setStatuses] = useState({});
+  const [busy, setBusy] = useState({});
+
+  async function run(key, action, payload={}) {
+    setBusy(p=>({...p,[key]:true}));
+    setStatuses(p=>({...p,[key]:{type:"info",text:"Running…"}}));
+    try {
+      const r = await api(action, payload);
+      if(r.ok) setStatuses(p=>({...p,[key]:{type:"ok",text:r.message||JSON.stringify(r).slice(0,200)}}));
+      else setStatuses(p=>({...p,[key]:{type:"err",text:r.message||r.error||"Failed"}}));
+    } catch(e) {
+      setStatuses(p=>({...p,[key]:{type:"err",text:String(e.message||e)}}));
+    }
+    setBusy(p=>({...p,[key]:false}));
+  }
+
+  const sections = [
+    {
+      title:"Sheet Infrastructure",
+      desc:"Ensures all required tabs (Users, Teams, Agents, Sessions, Audit, Trigger Log) exist and have correct headers. Additive only — never deletes data.",
+      actions:[
+        {key:"setupPortalSheets",label:"Setup Portal Sheets",action:"setupsheets",danger:false},
+      ]
+    },
+    {
+      title:"Triggers",
+      desc:"Installs background triggers: pollActiveBatches (1 min), backfillMissingOutputs (5 min), cleanupExpiredSessions (1 hr), repairUnassignedLeads (10 min). Safe to re-run.",
+      actions:[
+        {key:"installTriggers",label:"Install All Triggers",action:"installtriggers",danger:false},
+      ]
+    },
+    {
+      title:"Agent Sheet Repair",
+      desc:"Re-fetches result schemas from Hunar and ensures every active agent has the correct output columns in their Master Tracker, Qualified Leads, and other sheets. Additive only.",
+      actions:[
+        {key:"repairAgentSheets",label:"Repair Agent Sheets",action:"repairagentsheets",danger:false},
+      ]
+    },
+    {
+      title:"Data Deduplication",
+      desc:"Removes duplicate Call ID rows from Master Tracker, Not Connected, and Qualified Leads sheets. Safe — only removes exact duplicates based on Call ID.",
+      actions:[
+        {key:"dedupeAll",label:"Dedupe All Sheets",action:"dedupeallsheets",danger:false},
+        {key:"dedupeLeads",label:"Dedupe Qualified Leads Only",action:"dedupeleadsnow",danger:false},
+      ]
+    },
+    {
+      title:"Data Backfill",
+      desc:"Fetches missing result data for COMPLETED calls that have empty output fields. Fills in call duration, results, and moves qualified leads. Non-destructive.",
+      actions:[
+        {key:"backfill",label:"Backfill Missing Outputs",action:"backfillnow",danger:false},
+      ]
+    },
+    {
+      title:"Queue Processing",
+      desc:"Manually trigger the callback and retry queues. Processes any pending callback or not-connected retry campaigns that are due today.",
+      actions:[
+        {key:"runCallback",label:"Process Callback Queue",action:"runcallbacknow",danger:false},
+        {key:"runRetry",label:"Process Retry Queue",action:"runretrynow",danger:false},
+      ]
+    },
+  ];
+
+  return (
+    <div className="t-fade">
+      <div className="t-mast">
+        <div><div className="t-mast-title">Database Setup</div><div className="t-mast-sub">Additive migrations · safe to run on new deployments</div></div>
+      </div>
+      <div style={{padding:"16px 20px",background:"#fffbe6",borderBottom:"2px solid var(--yellow)",display:"flex",gap:10,alignItems:"flex-start"}}>
+        <span style={{fontSize:16}}>⚠️</span>
+        <div style={{fontSize:12,lineHeight:1.6}}>
+          <b>These operations are additive and non-destructive.</b> They add missing sheets and columns, repair broken references, and fill in missing data — but never delete existing rows or sheets. Safe to run after any new deployment.
+        </div>
+      </div>
+      <div style={{padding:20,display:"flex",flexDirection:"column",gap:20,maxWidth:720}}>
+        {sections.map(sec=>(
+          <div key={sec.title} style={{border:"1.5px solid var(--border)",borderRadius:4,overflow:"hidden"}}>
+            <div style={{background:"#f5f5f5",padding:"12px 16px",borderBottom:"1px solid var(--border)"}}>
+              <div style={{fontFamily:"var(--fd)",fontWeight:900,fontSize:13,letterSpacing:"-.01em"}}>{sec.title}</div>
+              <div style={{fontSize:11,color:"var(--muted)",marginTop:3,lineHeight:1.5}}>{sec.desc}</div>
+            </div>
+            <div style={{padding:"14px 16px",display:"flex",flexDirection:"column",gap:10}}>
+              {sec.actions.map(act=>(
+                <div key={act.key} style={{display:"flex",alignItems:"flex-start",gap:12}}>
+                  <button
+                    className={"t-btn " + (act.danger?"t-btn-red":"t-btn-black")}
+                    disabled={!!busy[act.key]}
+                    onClick={()=>run(act.key,act.action)}
+                    style={{minWidth:220,flexShrink:0}}
+                  >
+                    {busy[act.key] ? <Spin/> : act.label}
+                  </button>
+                  {statuses[act.key] && (
+                    <div className={"t-alert t-alert-"+statuses[act.key].type} style={{flex:1,fontSize:11,fontFamily:"var(--fm)",wordBreak:"break-word"}}>
+                      {statuses[act.key].text}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
