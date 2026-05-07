@@ -108,10 +108,6 @@ html,body{margin:0;padding:0;background:var(--bg);font-family:var(--fb);-webkit-
 .chip-cv{background:#fef3c7;color:#92400e}
 .chip-empty{background:#fee2e2;color:#991b1b}
 
-.usage-team-section{margin-bottom:8px}
-.usage-team-hd{padding:8px 14px;background:#f5f5f5;border-bottom:1.5px solid var(--black);font-family:var(--fd);font-weight:900;font-size:10px;letter-spacing:.12em;text-transform:uppercase;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.usage-team-stat{font-weight:400;color:var(--muted);font-size:10px}
-
 /* ── PILLS / TAGS ── */
 .t-pill{display:inline-flex;font-family:var(--fd);font-weight:700;font-size:8px;letter-spacing:.15em;padding:2px 7px;text-transform:uppercase;white-space:nowrap;border-radius:3px}
 .t-pill-live{background:var(--red);color:#fff}
@@ -333,33 +329,25 @@ input[type=checkbox]{accent-color:var(--black);cursor:pointer}
 .usage-stat-chip.purple{background:#ede9fe;border-color:#c4b5fd;color:#5b21b6}
 .usage-stat-chip.yellow{background:#fef3c7;border-color:#fde68a;color:#92400e}
 
-/* ── STATUS BREAKDOWN ── */
-.status-bd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;padding:14px 16px}
-.status-bd-item{border:1.5px solid var(--border);padding:8px 12px;border-radius:3px;display:flex;align-items:center;justify-content:space-between;gap:8px}
-.status-bd-label{font-size:10px;font-family:var(--fb);color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.status-bd-count{font-family:var(--fd);font-weight:900;font-size:16px;flex-shrink:0}
-.status-bd-bar{height:3px;background:#eee;margin-top:6px;border-radius:2px}
-.status-bd-bar-fill{height:100%;border-radius:2px}
-
-/* ── MAST SELECT — white bg black text ── */
+/* ── MAST SELECT ── */
 .mast-select{padding:6px 10px;border:1.5px solid rgba(255,255,255,.3);font-size:12px;font-family:var(--fb);background:#fff;color:#000;cursor:pointer;border-radius:2px}
 .mast-select:focus{outline:none;border-color:#fff}
 .mast-select option{background:#fff;color:#000}
 
-/* ── USAGE TEAM CARD ── */
-.usage-team-card{border:1.5px solid var(--border);margin-bottom:12px;background:#fff}
-.usage-team-card-hd{padding:10px 16px;background:var(--black);color:#fff;font-family:var(--fd);font-weight:900;font-size:10px;letter-spacing:.12em;text-transform:uppercase;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-.usage-team-kpis{display:grid;border-bottom:1px solid var(--border)}
-.usage-team-kpi{padding:10px 14px;text-align:center;border-right:1px solid var(--border)}
-.usage-team-kpi:last-child{border-right:none}
-.usage-team-kpi-v{font-family:var(--fd);font-weight:900;font-size:20px}
-.usage-team-kpi-l{font-family:var(--fd);font-weight:700;font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+/* ── MINUTES TRACKING ── */
+.mt-bar-wrap{display:flex;align-items:center;gap:8px}
+.mt-bar{flex:1;height:6px;background:#eee;border-radius:3px;overflow:hidden;max-width:100px}
+.mt-bar-fill{height:100%;border-radius:3px;transition:width .3s}
+.mt-pct{font-family:var(--fd);font-weight:900;font-size:11px;min-width:34px}
+
+/* ── AGENT GROUP HEADER ── */
+.agent-group-hd{padding:10px 20px 6px;font-family:var(--fd);font-weight:700;font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);background:#f8f8f8;border-bottom:1px solid var(--border);border-top:2px solid var(--black);display:flex;align-items:center;gap:8px}
 </style>
 </head>
 <body>
 <div id="root"></div>
 <script type="text/babel" data-presets="react">
-const API_URL = "https://voxa-portal-bfsi.onrender.com/api";
+const API_URL = "/api";
 
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
 const R = (typeof Recharts !== "undefined") ? Recharts : {};
@@ -387,7 +375,6 @@ async function api(action, payload={}, cacheMs=0) {
 // ── Client-side lead cache (per agent, 5 min TTL) ──
 const _leadCache = {};
 async function fetchLeadsWithCache(agentCode, filter) {
-  // Only cache when no active filters beyond agentCode
   const hasFilter = filter && (filter.search || filter.unassignedOnly || filter.requestId);
   if (!hasFilter) {
     const key = agentCode;
@@ -421,8 +408,8 @@ function Alert({ type, children }) {
   return <div className={"t-alert "+cls}>{children}</div>;
 }
 function RoleTag({ role }) {
-  const map = { super_admin:"t-tag-purple", admin:"t-tag-blue", team_lead:"t-tag-green", recruiter:"t-tag-gray" };
-  const labels = { super_admin:"Super Admin", admin:"Admin", team_lead:"Team Lead", recruiter:"Recruiter" };
+  const map = { super_admin:"t-tag-purple", admin:"t-tag-blue", team_lead:"t-tag-green", recruiter:"t-tag-gray", individual_contributor:"t-tag-red" };
+  const labels = { super_admin:"Super Admin", admin:"Admin", team_lead:"Team Lead", recruiter:"Recruiter", individual_contributor:"IC" };
   return <span className={"t-tag "+(map[role]||"t-tag-gray")}>{labels[role]||role}</span>;
 }
 function StatusPill({ status }) {
@@ -495,9 +482,7 @@ function DateCell({ value }) {
   } catch { return <span className="date-cell">{value}</span>; }
 }
 
-// ─────────────────────────────────────────────────────────────
-// REMARKS MODAL
-// ─────────────────────────────────────────────────────────────
+// ── REMARKS MODAL ──
 function RemarksModal({ name, value, onSave, onClose }) {
   const [text, setText] = useState(value || "");
   return (
@@ -593,12 +578,10 @@ const NAV_ITEMS = [
   { id:"trigger",   label:"Trigger Campaign" },
   { id:"campaigns", label:"Campaigns" },
   { id:"agents",    label:"Agents", superOnly:true },
-  { id:"myagents",  label:"Agents", showFor:["team_lead"] },
-  { id:"users",     label:"Users", hideFor:["recruiter"] },
-  { id:"teams",     label:"Teams", hideFor:["recruiter","team_lead"] },
+  { id:"myagents",  label:"Agents", showFor:["team_lead","individual_contributor"] },
+  { id:"users",     label:"Users", hideFor:["recruiter","individual_contributor"] },
+  { id:"teams",     label:"Teams", hideFor:["recruiter","team_lead","individual_contributor"] },
 ];
-
-// Shell filter update handled below
 
 // ── Multi-select + search column filter ──
 function ExcelColFilter({ header, values, selected, onChange }) {
@@ -620,7 +603,6 @@ function ExcelColFilter({ header, values, selected, onChange }) {
     return allVals.filter(v => v.toLowerCase().includes(q) || (v===""&&"blank".includes(q)));
   }, [allVals, search]);
 
-  // close on outside click
   useEffect(() => {
     if(!open) return;
     function handle(e){ if(ref.current && !ref.current.contains(e.target)) setOpen(false); }
@@ -634,7 +616,6 @@ function ExcelColFilter({ header, values, selected, onChange }) {
     onChange(next.size > 0 ? [...next] : null);
   }
   function clearAll(e){ e.stopPropagation(); onChange(null); setSearch(""); }
-  function selectAll(e){ e.stopPropagation(); onChange(filtered.length>0?[...filtered]:null); }
 
   const label = hasFilter
     ? sel.size === 1 ? ([...sel][0]||"(blank)") : `${sel.size} selected`
@@ -653,24 +634,13 @@ function ExcelColFilter({ header, values, selected, onChange }) {
       </div>
       {open && (
         <div style={{position:"absolute",top:"calc(100% + 2px)",left:0,zIndex:99999,background:"#fff",border:"2px solid var(--black)",boxShadow:"3px 3px 0 rgba(0,0,0,.12)",minWidth:160,maxWidth:260,width:"max-content"}}>
-          {/* Search input */}
           <div style={{padding:"4px 5px",borderBottom:"1px solid #eee"}}>
-            <input
-              autoFocus
-              value={search}
-              onChange={e=>setSearch(e.target.value)}
-              placeholder="Search…"
-              style={{width:"100%",border:"1px solid #ddd",borderRadius:2,padding:"3px 5px",fontSize:11,fontFamily:"var(--fb)",outline:"none",boxSizing:"border-box"}}
-              onKeyDown={e=>{ if(e.key==="Escape"){setOpen(false);setSearch("");} }}
-              onClick={e=>e.stopPropagation()}
-            />
+            <input autoFocus value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search…" style={{width:"100%",border:"1px solid #ddd",borderRadius:2,padding:"3px 5px",fontSize:11,fontFamily:"var(--fb)",outline:"none",boxSizing:"border-box"}} onKeyDown={e=>{ if(e.key==="Escape"){setOpen(false);setSearch("");} }} onClick={e=>e.stopPropagation()}/>
           </div>
-          {/* Quick actions */}
           <div style={{display:"flex",gap:0,borderBottom:"1px solid #eee"}}>
             <button onMouseDown={e=>{e.preventDefault();onChange(null);setSearch("");}} style={{flex:1,padding:"3px 0",fontSize:10,fontFamily:"var(--fb)",border:"none",borderRight:"1px solid #eee",background:"#fafafa",cursor:"pointer"}}>Clear</button>
-            <button onMouseDown={e=>{e.preventDefault();selectAll(e);}} style={{flex:1,padding:"3px 0",fontSize:10,fontFamily:"var(--fb)",border:"none",background:"#fafafa",cursor:"pointer"}}>All shown</button>
+            <button onMouseDown={e=>{e.preventDefault();onChange(filtered.length>0?[...filtered]:null);}} style={{flex:1,padding:"3px 0",fontSize:10,fontFamily:"var(--fb)",border:"none",background:"#fafafa",cursor:"pointer"}}>All shown</button>
           </div>
-          {/* Options list */}
           <div style={{maxHeight:200,overflowY:"auto"}}>
             {filtered.length===0&&<div style={{padding:"6px 8px",fontSize:11,color:"#999",fontFamily:"var(--fb)"}}>No matches</div>}
             {filtered.map(v=>{
@@ -683,7 +653,6 @@ function ExcelColFilter({ header, values, selected, onChange }) {
               );
             })}
           </div>
-          {/* Footer */}
           {hasFilter&&<div style={{padding:"3px 8px",borderTop:"1px solid #eee",fontSize:10,color:"var(--blue)",fontFamily:"var(--fb)"}}>{sel.size} selected</div>}
         </div>
       )}
@@ -691,11 +660,9 @@ function ExcelColFilter({ header, values, selected, onChange }) {
   );
 }
 
-// ── Table filter hook — fixed to apply filters correctly ──
+// ── Table filter hook ──
 function useTableFilters(data, headers) {
   const [filters, setFilters] = useState({});
-
-  // Reset filters when data/headers change significantly
   useEffect(() => { setFilters({}); }, [headers.join(",")]);
 
   const colValues = useMemo(() => {
@@ -906,23 +873,43 @@ function AgentPicker({ agents, value, onChange, allowAll }) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// MINUTES TRACKING BAR COMPONENT
+// ─────────────────────────────────────────────────────────────
+function MinutesBar({ pct, size = "normal" }) {
+  const color = pct >= 90 ? "var(--red)" : pct >= 70 ? "var(--yellow)" : "var(--green)";
+  const h = size === "small" ? 4 : 6;
+  return (
+    <div className="mt-bar-wrap">
+      <div className="mt-bar" style={{height:h}}>
+        <div className="mt-bar-fill" style={{width: Math.min(100,pct)+"%", background:color, height:"100%"}}/>
+      </div>
+      <span className="mt-pct" style={{color: pct>=90?"var(--red)":"var(--black)", fontSize: size==="small"?10:11}}>{pct}%</span>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 // DASHBOARD
 // ─────────────────────────────────────────────────────────────
 function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
   const [dashData, setDashData] = useState(null);
   const [usageData, setUsageData] = useState(null);
+  const [minutesData, setMinutesData] = useState(null); // ← NEW
   const [range, setRange] = useState("7d");
-  const [section, setSection] = useState("overview"); // overview | people | agents
+  const [section, setSection] = useState("overview");
 
   async function load() {
-    const [d, u] = await Promise.all([
+    const [d, u, m] = await Promise.all([
       api("getDashboard", {range, agentCode: selectedAgent}),
       api("getUsage", {range}),
+      api("getMinutesTracking", {}), // ← NEW
     ]);
     if(d.ok) setDashData(d);
     if(u.ok) setUsageData(u);
+    if(m.ok) setMinutesData(m); // ← NEW
   }
-  useEffect(()=>{ setDashData(null); setUsageData(null); load(); },[range,selectedAgent]);
+
+  useEffect(()=>{ setDashData(null); setUsageData(null); setMinutesData(null); load(); },[range,selectedAgent]);
   useEffect(()=>{ const t=setInterval(load,5*60*1000); return()=>clearInterval(t); },[range,selectedAgent]);
 
   if(!dashData||!usageData) return <div style={{display:"flex",justifyContent:"center",padding:60}}><Spin/></div>;
@@ -930,7 +917,6 @@ function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
   const lineupCount = s.lineupCount||0;
   const cvAwaitedCount = s.cvAwaitedCount||0;
 
-  // Usage aggregations
   const byUser = {};
   (usageData.rows||[]).forEach(r=>{
     const k=r.email||r.name;
@@ -948,12 +934,13 @@ function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
   const grandLineup = (usageData.leadStats||[]).reduce((s,ls)=>s+(ls.interviewLinedUp||0),0);
   const grandCalls = (usageData.rows||[]).reduce((s,r)=>s+Number(r.calls||0),0);
 
-  // TL-specific: recruiter breakdown from teamBreakdown
   const myTeamData = dashData.teamBreakdown && dashData.teamBreakdown.length>0 ? dashData.teamBreakdown[0] : null;
 
+  // ── Build sections based on role ──
   const SECTIONS = [
-    {id:"overview",label:"Overview"},
-    {id:"people",label: user.role==="team_lead"?"Recruiters":"People"},
+    {id:"overview",   label:"Overview"},
+    {id:"people",     label: user.role==="team_lead"?"Recruiters":"People"},
+    {id:"minutes",    label:"Minutes Tracking"}, // ← NEW
     ...(user.role==="super_admin"||user.role==="admin" ? [{id:"teams",label:"Teams"}] : []),
   ];
 
@@ -985,9 +972,9 @@ function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
         ))}
       </div>
 
+      {/* ── OVERVIEW ── */}
       {section==="overview" && (
         <>
-          {/* Top KPIs - no minutes, no unassigned */}
           <div className="t-kpis" style={{gridTemplateColumns:"repeat(5,1fr)"}}>
             {[
               {label:"Total Calls",value:s.totalCalls||grandCalls||0,color:"#0066b3"},
@@ -1017,11 +1004,9 @@ function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
               </div>
             ))}
           </div>
-
-          {/* Time series chart */}
           {dashData.timeSeries && dashData.timeSeries.length>0 && RECHARTS_OK && (
             <div className="t-board">
-              <div className="t-board-hd"><h2 className="t-board-hd-title">Calls & Qualified Leads Over Time</h2></div>
+              <div className="t-board-hd"><h2 className="t-board-hd-title">Calls &amp; Qualified Leads Over Time</h2></div>
               <div style={{padding:"16px 20px"}}>
                 <R.ResponsiveContainer width="100%" height={220}>
                   <R.LineChart data={dashData.timeSeries}>
@@ -1040,7 +1025,7 @@ function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
         </>
       )}
 
-      {/* PEOPLE SECTION — recruiter-wise for TL, all users for admin/super */}
+      {/* ── PEOPLE ── */}
       {section==="people" && (
         <div className="t-board">
           <div className="t-board-hd">
@@ -1048,7 +1033,6 @@ function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
             <span className="t-board-meta">{userList.length} people</span>
           </div>
 
-          {/* TL view — show own team's recruiters prominently from teamBreakdown */}
           {user.role==="team_lead" && myTeamData && myTeamData.agents && myTeamData.agents.length>0 && (
             <div style={{padding:"16px 20px",display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:12,borderBottom:"1px solid var(--border)"}}>
               {myTeamData.agents.map(a=>(
@@ -1085,7 +1069,6 @@ function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
             </div>
           )}
 
-          {/* For non-TL or fallback: flat user cards */}
           {user.role!=="team_lead" && (
             <div style={{padding:"12px 16px",display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:10,borderBottom:"1px solid var(--border)"}}>
               {userList.map(u=>(
@@ -1112,7 +1095,6 @@ function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
             </div>
           )}
 
-          {/* Detailed table */}
           <div className="t-tbl-wrap">
             <table className="t-tbl">
               <thead><tr><th>Name</th><th>Team</th><th>Calls</th><th>QL</th><th>Connected</th><th>Lined Up</th><th>CV Awaited</th><th style={{color:"var(--red)"}}>Empty Status</th><th>Fill Rate</th></tr></thead>
@@ -1137,7 +1119,136 @@ function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
         </div>
       )}
 
-      {/* TEAMS SECTION — admin/super_admin only */}
+      {/* ── MINUTES TRACKING — NEW ── */}
+      {section==="minutes" && (
+        <div className="t-board">
+          <div className="t-board-hd">
+            <h2 className="t-board-hd-title">Minutes Tracking</h2>
+            <span className="t-board-meta">
+              {minutesData ? minutesData.month : "Loading…"} · {minutesData ? (minutesData.tracking||[]).length : 0} active users
+            </span>
+          </div>
+
+          {!minutesData && <div style={{padding:60,textAlign:"center"}}><Spin/></div>}
+
+          {minutesData && (minutesData.tracking||[]).length === 0 && (
+            <div className="t-empty">No minute usage recorded this month.</div>
+          )}
+
+          {minutesData && (minutesData.tracking||[]).length > 0 && (
+            <>
+              {/* Summary KPIs */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",borderBottom:"2px solid var(--black)"}}>
+                {[
+                  {label:"Total MTD Calls", value: (minutesData.tracking||[]).reduce((a,t)=>a+t.mtdCalls,0), color:"#0066b3"},
+                  {label:"Total MTD Minutes", value: Math.round((minutesData.tracking||[]).reduce((a,t)=>a+t.mtdMinutes,0)), color:"#009149"},
+                  {label:"Today's Calls", value: (minutesData.tracking||[]).reduce((a,t)=>a+t.todayCalls,0), color:"#e2001a"},
+                  {label:"Today's Minutes", value: Math.round((minutesData.tracking||[]).reduce((a,t)=>a+t.todayMinutes,0)), color:"#5b21b6"},
+                ].map(k=>(
+                  <div key={k.label} className="t-kpi">
+                    <div className="t-kpi-accent" style={{background:k.color}}/>
+                    <div className="t-kpi-label">{k.label}</div>
+                    <div className="t-kpi-value">{k.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Recruiter cards — group by team */}
+              {(() => {
+                const tracking = minutesData.tracking || [];
+                const byTeam = {};
+                tracking.forEach(t => {
+                  const teamKey = t.team || "— No Team —";
+                  if(!byTeam[teamKey]) byTeam[teamKey] = [];
+                  byTeam[teamKey].push(t);
+                });
+                return Object.entries(byTeam).sort(([a],[b])=>a.localeCompare(b)).map(([team, members]) => (
+                  <div key={team}>
+                    <div className="agent-group-hd">
+                      <span>{team}</span>
+                      <span style={{fontWeight:400,color:"var(--muted)"}}>
+                        {members.length} user{members.length!==1?"s":""} ·{" "}
+                        {Math.round(members.reduce((a,m)=>a+m.mtdMinutes,0))} MTD mins
+                      </span>
+                    </div>
+                    <div className="t-tbl-wrap">
+                      <table className="t-tbl">
+                        <thead>
+                          <tr>
+                            <th>Recruiter</th>
+                            <th>Role</th>
+                            <th>Daily Limit</th>
+                            <th>Today Mins</th>
+                            <th>Today Calls</th>
+                            <th>Today Usage</th>
+                            <th>MTD Mins</th>
+                            <th>MTD Calls</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {members.map(t => (
+                            <tr key={t.email}>
+                              <td>
+                                <div className="t-tbl nm">{t.name}</div>
+                                <div className="t-tbl nm-sub">{t.email}</div>
+                              </td>
+                              <td><RoleTag role={t.role}/></td>
+                              <td className="t-mono">{t.dailyLimit > 0 ? t.dailyLimit+"m" : <span style={{color:"var(--green)",fontSize:10}}>∞ Unlimited</span>}</td>
+                              <td>
+                                <span className={`usage-stat-chip ${t.todayMinutes > 0 ? "blue" : ""}`}>
+                                  <b>{t.todayMinutes}</b><span>min</span>
+                                </span>
+                              </td>
+                              <td className="t-mono">{t.todayCalls}</td>
+                              <td style={{minWidth:140}}>
+                                {t.dailyLimit > 0
+                                  ? <MinutesBar pct={t.todayUsagePct}/>
+                                  : <span style={{fontSize:10,color:"var(--green)",fontFamily:"var(--fd)",fontWeight:700}}>∞ No cap</span>
+                                }
+                              </td>
+                              <td>
+                                <span className={`usage-stat-chip ${t.mtdMinutes > 0 ? "purple" : ""}`}>
+                                  <b>{t.mtdMinutes}</b><span>min</span>
+                                </span>
+                              </td>
+                              <td className="t-mono">{t.mtdCalls}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ));
+              })()}
+
+              {/* Alert rows — users near/over limit */}
+              {(() => {
+                const nearLimit = (minutesData.tracking||[]).filter(t => t.dailyLimit > 0 && t.todayUsagePct >= 80);
+                if(nearLimit.length === 0) return null;
+                return (
+                  <div style={{padding:"12px 20px",borderTop:"2px solid var(--black)",background:"#fffbe0"}}>
+                    <div style={{fontFamily:"var(--fd)",fontWeight:900,fontSize:11,letterSpacing:".12em",textTransform:"uppercase",marginBottom:8,color:"#92400e"}}>
+                      ⚠ Near / Over Daily Limit ({nearLimit.length})
+                    </div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                      {nearLimit.map(t => (
+                        <div key={t.email} style={{background:"#fff",border:`2px solid ${t.todayUsagePct>=100?"var(--red)":"var(--yellow)"}`,padding:"6px 12px",borderRadius:4,minWidth:180}}>
+                          <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:11}}>{t.name}</div>
+                          <div style={{fontSize:10,color:"var(--muted)",fontFamily:"var(--fm)"}}>{t.email}</div>
+                          <div style={{marginTop:4}}><MinutesBar pct={t.todayUsagePct} size="small"/></div>
+                          <div style={{fontSize:9,color:"var(--muted)",marginTop:2}}>{t.todayMinutes}/{t.dailyLimit} min used today</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── TEAMS ── */}
       {section==="teams" && (user.role==="admin"||user.role==="super_admin") && dashData.teamBreakdown && (
         <div className="t-board">
           <div className="t-board-hd"><h2 className="t-board-hd-title">Team Breakdown</h2><span className="t-board-meta">{dashData.teamBreakdown.length} teams</span></div>
@@ -1185,7 +1296,7 @@ function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// LEADS VIEW — with debounced search + client-side cache
+// LEADS VIEW
 // ─────────────────────────────────────────────────────────────
 function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter }) {
   const [selAgent, setSelAgent] = useState(initialFilter?.agentCode || (agents[0]?.agentCode||""));
@@ -1193,7 +1304,7 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
   const [headers, setHeaders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchInput, setSearchInput] = useState("");
-  const search = useDebounce(searchInput, 300); // debounce search
+  const search = useDebounce(searchInput, 300);
   const [unassignedOnly, setUnassignedOnly] = useState(false);
   const [reqFilter, setReqFilter] = useState(initialFilter?.requestId || "");
   const [busy, setBusy] = useState(false);
@@ -1203,27 +1314,21 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
   const [lastRefresh, setLastRefresh] = useState(null);
   const [selTeam, setSelTeam] = useState("");
 
-  // Team filter by member emails
   const teamFilterEmails = useMemo(() => {
     if (!selTeam) return null;
-    const teamMembers = users.filter(u => u.teamId === selTeam || u.team === selTeam && (u.role === "recruiter" || u.role === "team_lead"));
+    const teamMembers = users.filter(u => u.team === selTeam);
     return new Set(teamMembers.map(u => u.email.toLowerCase()));
   }, [selTeam, users]);
 
   async function refresh() {
     setLoading(true);
     if(!selAgent) {
-      // All agents — fetch all leads across visible agents
       const r = await api("getLeads", { agentCode: "", filter: { search, unassignedOnly, requestId: reqFilter||undefined } });
       setLoading(false);
       if(r.ok){setLeads(r.leads||[]);setHeaders(r.headers||[]);setLastRefresh(new Date());}
       return;
     }
-    const r = await fetchLeadsWithCache(selAgent, {
-      search,
-      unassignedOnly,
-      requestId: reqFilter||undefined
-    });
+    const r = await fetchLeadsWithCache(selAgent, { search, unassignedOnly, requestId: reqFilter||undefined });
     setLoading(false);
     if(r.ok){setLeads(r.leads||[]);setHeaders(r.headers||[]);setLastRefresh(new Date());}
   }
@@ -1244,7 +1349,6 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
   const { filters, filtered: rawFiltered, colValues, setColFilter, clearFilters } = useTableFilters(leads, shownHeaders);
   const hasFilters = Object.keys(filters).length > 0;
 
-  // Apply team filter on top of column filters
   const filteredLeads = useMemo(() => {
     let result = rawFiltered;
     if (teamFilterEmails) {
@@ -1286,15 +1390,9 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
   }
 
   async function handleCellChange(callId, field, value) {
-    // Optimistic update — instant UI response
     setLeads(prev => prev.map(l => l["Call ID"] === callId ? {...l, [field]: value} : l));
-    // Save in background
     const r = await api("updateLead",{agentCode:selAgent,callId,fields:{[field]:value}});
-    if (!r.ok) {
-      // Revert on failure
-      invalidateLeadCache(selAgent);
-      refresh();
-    }
+    if (!r.ok) { invalidateLeadCache(selAgent); refresh(); }
   }
 
   function renderCell(h, val, lead) {
@@ -1335,7 +1433,6 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
           </div>
         </div>
         <div className="t-mast-r">
-          {/* Team filter — white bg */}
           {teams && teams.length>0 && (
             <select className="mast-select" value={selTeam} onChange={e=>setSelTeam(e.target.value)} style={{minWidth:130}}>
               <option value="">All Teams</option>
@@ -1355,7 +1452,6 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
       </div>
 
       <div style={{flex:1,background:"var(--white)"}}>
-        {false && <div className="t-empty">Pick an agent to view leads.</div>}
         {selAgent && loading && <div style={{padding:60,textAlign:"center"}}><Spin/></div>}
         {selAgent && !loading && filteredLeads.length===0 && <div className="t-empty">No leads found.</div>}
         {selAgent && !loading && leads.length>0 && (
@@ -1562,7 +1658,7 @@ function UploadView({ user, agents, refreshMe }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// CAMPAIGNS VIEW — team filter fixed
+// CAMPAIGNS VIEW
 // ─────────────────────────────────────────────────────────────
 function CampaignsView({ agents, user, teams, onViewLeads }) {
   const [selAgent,setSelAgent]=useState("");
@@ -1579,9 +1675,8 @@ function CampaignsView({ agents, user, teams, onViewLeads }) {
     return <CampaignDetail campaign={openCampaign} agents={agents} tab={campaignTab} setTab={setCampaignTab} onBack={()=>setOpenCampaign(null)} onViewLeads={onViewLeads}/>;
   }
 
-  // Fix: filter by team using triggeredByTeam field
   const displayRows = selTeam
-    ? rows.filter(r => r.triggeredByTeam === selTeam || r.triggeredByTeamId === selTeam || (teams.find(t=>t.id===selTeam||t.name===selTeam)?.name) === r.triggeredByTeam)
+    ? rows.filter(r => r.triggeredByTeam === selTeam)
     : rows;
 
   const live=displayRows.filter(r=>r.status==="IN_PROGRESS").length;
@@ -1599,7 +1694,6 @@ function CampaignsView({ agents, user, teams, onViewLeads }) {
           <AgentPicker agents={agents} value={selAgent} onChange={setSelAgent} allowAll/>
         </div>
       </div>
-      {/* Team tabs — white bg black text */}
       {teams && teams.length>0 && (user.role==="admin"||user.role==="super_admin") && (
         <div style={{display:"flex",gap:0,borderBottom:"2px solid var(--black)",background:"#fff",overflowX:"auto"}}>
           <div className={"t-tab"+(selTeam===""?" active":"")} onClick={()=>setSelTeam("")}>All Teams</div>
@@ -1900,7 +1994,7 @@ function CampaignNotConnectedTab({ campaign }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// AGENTS VIEW
+// AGENTS VIEW (super_admin)
 // ─────────────────────────────────────────────────────────────
 function AgentsView({ onChange }) {
   const [agents,setAgents]=useState([]); const [loading,setLoading]=useState(true);
@@ -1925,7 +2019,7 @@ function AgentsView({ onChange }) {
         ) : (
           <div className="t-tbl-wrap">
             <table className="t-tbl">
-              <thead><tr><th>Agent</th><th>Code</th><th>Language</th><th>Input Fields</th><th>Qualification Rule</th><th>Status</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Agent</th><th>Code</th><th>Added By</th><th>Language</th><th>Input Fields</th><th>Qualification Rule</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody>
                 {agents.map(a=>{
                   const rules = a.qualificationRules || (a.qualificationField ? [{field: a.qualificationField, keywords: a.qualificationValues||[]}] : []);
@@ -1933,6 +2027,7 @@ function AgentsView({ onChange }) {
                     <tr key={a.agentCode}>
                       <td><div className="t-tbl nm">{a.displayName}</div><div className="t-tbl nm-sub">{a.description?.slice(0,60)}</div></td>
                       <td><span className="t-mono">{a.agentCode}</span></td>
+                      <td><span className="t-mono" style={{fontSize:10,color:"var(--muted)"}}>{a.createdBy||"—"}</span></td>
                       <td style={{fontSize:11}}>{a.language}</td>
                       <td>{(a.customVariables||[]).map(v=><span key={v} className="t-pill t-pill-gray" style={{marginRight:2,marginBottom:2}}>{v}</span>)}</td>
                       <td style={{fontSize:11}}>
@@ -2002,7 +2097,7 @@ function AgentEditModal({ agent, onSave, onClose }) {
       <div className="t-modal t-fade" style={{maxWidth:600}}>
         <div className="t-modal-hd"><span>Edit Agent — {agent.displayName||agent.agentCode}</span><button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:18,lineHeight:1}}>×</button></div>
         <div className="t-modal-body" style={{display:"flex",flexDirection:"column",gap:12}}>
-          <div style={{fontSize:9,fontFamily:"var(--fm)",color:"var(--muted)"}}>Hunar ID: {agent.agentId}</div>
+          <div style={{fontSize:9,fontFamily:"var(--fm)",color:"var(--muted)"}}>Hunar ID: {agent.agentId} · Added by: {agent.createdBy||"—"}</div>
           <div><label className="t-label">Display Name</label><input className="t-input" value={a.displayName||""} onChange={e=>setA({...a,displayName:e.target.value})}/></div>
           <div><label className="t-label">Description</label><textarea className="t-input" rows={2} value={a.description||""} onChange={e=>setA({...a,description:e.target.value})}/></div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
@@ -2107,7 +2202,7 @@ function UsersView({ user, teams }) {
 }
 function UserModal({ user, teams, actorRole, actorTeam, onSave, onClose, isNew }) {
   const [u,setU]=useState({...user});
-  const roles=actorRole==="super_admin"?["super_admin","admin","team_lead","recruiter"]:(actorRole==="admin"?["team_lead","recruiter"]:["recruiter"]);
+  const roles=actorRole==="super_admin"?["super_admin","admin","team_lead","individual_contributor","recruiter"]:(actorRole==="admin"?["team_lead","individual_contributor","recruiter"]:["recruiter"]);
   const locked=actorRole==="team_lead";
   return (
     <div className="t-modal-bg">
@@ -2147,12 +2242,11 @@ function TeamsView({ user, agents }) {
         {loading ? <div style={{padding:60,textAlign:"center"}}><Spin/></div> : teams.length===0 ? <div className="t-empty">No teams yet.</div> : (
           <div className="t-tbl-wrap">
             <table className="t-tbl">
-              <thead><tr><th>Team Name</th><th>Admin Email</th><th>Agents Assigned</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Team Name</th><th>Agents Assigned</th><th>Actions</th></tr></thead>
               <tbody>
                 {teams.map(t=>(
                   <tr key={t.id}>
                     <td><div className="t-tbl nm">{t.name}</div></td>
-                    <td><span className="t-mono" style={{fontSize:10}}>{t.adminEmail||"—"}</span></td>
                     <td>{(t.agentCodes||[]).map(code=>{const a=agents.find(x=>x.agentCode===code);return <span key={code} className="t-pill t-pill-blue" style={{marginRight:3,marginBottom:2}}>{a?a.displayName:code}</span>;})}</td>
                     <td><button onClick={()=>setEditing(t)} className="t-btn t-btn-outline t-btn-sm">Edit</button></td>
                   </tr>
@@ -2162,7 +2256,7 @@ function TeamsView({ user, agents }) {
           </div>
         )}
       </div>
-      {adding&&<TeamModal team={{name:"",adminEmail:"",agentCodes:[]}} agents={agents} onSave={save} onClose={()=>setAdding(false)} isNew/>}
+      {adding&&<TeamModal team={{name:"",agentCodes:[]}} agents={agents} onSave={save} onClose={()=>setAdding(false)} isNew/>}
       {editing&&<TeamModal team={editing} agents={agents} onSave={save} onClose={()=>setEditing(null)}/>}
     </div>
   );
@@ -2176,7 +2270,6 @@ function TeamModal({ team, agents, onSave, onClose, isNew }) {
         <div className="t-modal-hd"><span>{isNew?"Add Team":"Edit Team"}</span><button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:18,lineHeight:1}}>×</button></div>
         <div className="t-modal-body" style={{display:"flex",flexDirection:"column",gap:10}}>
           <div><label className="t-label">Team Name</label><input className="t-input" value={t.name||""} onChange={e=>setT({...t,name:e.target.value})}/></div>
-          <div><label className="t-label">Admin Email (optional)</label><input className="t-input" type="email" value={t.adminEmail||""} onChange={e=>setT({...t,adminEmail:e.target.value})}/></div>
           <div>
             <label className="t-label">Agents This Team May Run</label>
             <div style={{border:"1.5px solid var(--black)",maxHeight:200,overflowY:"auto"}}>
@@ -2196,29 +2289,22 @@ function TeamModal({ team, agents, onSave, onClose, isNew }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// USAGE VIEW — enhanced with team/user stats including QL, connected, lineup, CV awaited, empty status
-// ─────────────────────────────────────────────────────────────
-// UsageView removed — merged into DashboardView
-
-// ─────────────────────────────────────────────────────────────
-// TL AGENTS VIEW — card UI like Hunar, create/edit/add by ID
+// TL/IC AGENTS VIEW — grouped by creator, with "Add by ID" + wizard
 // ─────────────────────────────────────────────────────────────
 const VOICE_PERSONAS = ["NEHA","ROY","ZOE","SAM","MIRA","EESHA"];
 const LANGUAGES      = ["ENGLISH","HINDI","TAMIL","TURKISH","SPANISH","KANNADA","MARATHI","TELUGU"];
 
 function TLAgentsView({ user, agents: initAgents, refreshAgents }) {
   const [agents, setAgents] = useState(initAgents||[]);
-  const [tab, setTab] = useState("active"); // active | drafts
+  const [tab, setTab] = useState("active");
   const [mode, setMode] = useState("list"); // list | create | edit | addById | qualEdit
   const [editAgent, setEditAgent] = useState(null);
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState({type:"",text:""});
 
-  // Sync agents from parent
   useEffect(()=>setAgents(initAgents||[]),[initAgents]);
 
-  // campaign stats per agent — from campaigns
   const [stats, setStats] = useState({});
   useEffect(()=>{
     (async()=>{
@@ -2235,9 +2321,13 @@ function TLAgentsView({ user, agents: initAgents, refreshAgents }) {
     })();
   },[]);
 
-  const activeAgents = agents.filter(a=>a.active);
-  const draftAgents  = agents.filter(a=>!a.active);
-  const shown = (tab==="active"?activeAgents:draftAgents).filter(a=>!search||a.displayName.toLowerCase().includes(search.toLowerCase()));
+  const myAgents   = agents.filter(a => a.createdBy === user.email);
+  const activeList = myAgents.filter(a=>a.active);
+  const draftList  = myAgents.filter(a=>!a.active);
+  const shown = (tab==="active"?activeList:draftList).filter(a=>!search||a.displayName.toLowerCase().includes(search.toLowerCase()));
+
+  // For recruiters: agents that were added by TL/IC (not the current user) — read-only
+  const othersAgents = agents.filter(a => a.createdBy !== user.email && a.active);
 
   async function doSave(form, qualRules) {
     setSaving(true); setMsg({type:"",text:""});
@@ -2246,7 +2336,6 @@ function TLAgentsView({ user, agents: initAgents, refreshAgents }) {
     const allKeywords = rules.flatMap(r=>r.keywords);
     const resultSchema = {};
     (form.resultFields||[]).filter(f=>f.name.trim()).forEach(f=>{ resultSchema[f.name.trim()]=f.expected.trim()||"string"; });
-
     const r = await api("upsertMyAgent",{agent:{
       agentCode:    editAgent?.agentCode||"",
       agentId:      editAgent?.agentId||"",
@@ -2276,12 +2365,10 @@ function TLAgentsView({ user, agents: initAgents, refreshAgents }) {
   async function doAddById(agentId) {
     if(!agentId.trim()){ setMsg({type:"err",text:"Enter an Agent ID"}); return; }
     setSaving(true); setMsg({type:"",text:""});
-    // Sync just this agent by having super_admin do it — we use upsertMyAgent with minimal info
-    // Actually we just call upsertAgent action which fetches from Hunar
-    const r = await api("upsertMyAgent",{agent:{agentId:agentId.trim(),displayName:"Fetching...",language:"ENGLISH",voicePersona:"NEHA",agentPrompt:" ",resultPrompt:" ",introduction:" ",objective:" ",resultSchema:{}}});
+    const r = await api("addAgentById",{agentId:agentId.trim()});
     setSaving(false);
     if(!r.ok){ setMsg({type:"err",text:r.message||r.error}); return; }
-    setMsg({type:"ok",text:"Agent added to your team!"});
+    setMsg({type:"ok",text:"Agent added to your list!"});
     const me = await api("me",{});
     if(me.ok){ setAgents(me.agents||[]); refreshAgents&&refreshAgents(me.agents||[]); }
     setTimeout(()=>setMode("list"),1200);
@@ -2294,17 +2381,18 @@ function TLAgentsView({ user, agents: initAgents, refreshAgents }) {
   return (
     <div className="t-fade">
       <div className="t-mast">
-        <div><div className="t-mast-title">Agents</div><div className="t-mast-sub">Your team's calling agents</div></div>
+        <div><div className="t-mast-title">Agents</div><div className="t-mast-sub">Your calling agents · {myAgents.length} total</div></div>
         <div style={{display:"flex",gap:8}}>
           <button className="t-btn t-btn-outline t-btn-sm" style={{color:"rgba(255,255,255,.7)",borderColor:"rgba(255,255,255,.3)"}} onClick={()=>{ setMode("addById"); setMsg({type:"",text:""}); }}>+ Add by Agent ID</button>
           <button className="t-btn" style={{background:"#fff",color:"var(--black)",fontFamily:"var(--fd)",fontWeight:900,fontSize:11,padding:"8px 18px"}} onClick={()=>{ setEditAgent(null); setMsg({type:"",text:""}); setMode("create"); }}>+ Create new Agent</button>
         </div>
       </div>
 
-      <div style={{padding:"14px 20px 0",display:"flex",alignItems:"center",gap:16,background:"#fff",borderBottom:"1px solid var(--border)"}}>
+      {/* Tabs: My Active / My Inactive */}
+      <div style={{padding:"0 20px 0",display:"flex",alignItems:"center",gap:16,background:"#fff",borderBottom:"1px solid var(--border)"}}>
         <div style={{display:"flex",gap:4}}>
-          {[{id:"active",label:`Active (${activeAgents.length})`},{id:"drafts",label:`Inactive (${draftAgents.length})`}].map(t=>(
-            <button key={t.id} onClick={()=>setTab(t.id)} style={{padding:"8px 16px",fontFamily:"var(--fd)",fontWeight:700,fontSize:12,border:"none",borderBottom:tab===t.id?"2.5px solid var(--black)":"2.5px solid transparent",background:"none",cursor:"pointer",color:tab===t.id?"var(--black)":"var(--muted)",marginBottom:-1}}>
+          {[{id:"active",label:`My Active (${activeList.length})`},{id:"drafts",label:`Inactive (${draftList.length})`}].map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{padding:"10px 16px",fontFamily:"var(--fd)",fontWeight:700,fontSize:12,border:"none",borderBottom:tab===t.id?"2.5px solid var(--black)":"2.5px solid transparent",background:"none",cursor:"pointer",color:tab===t.id?"var(--black)":"var(--muted)",marginBottom:-1}}>
               {t.label}
             </button>
           ))}
@@ -2313,6 +2401,7 @@ function TLAgentsView({ user, agents: initAgents, refreshAgents }) {
         <input className="t-input" style={{width:220,fontSize:12,padding:"6px 10px"}} placeholder="Search by agent name…" value={search} onChange={e=>setSearch(e.target.value)}/>
       </div>
 
+      {/* MY agents grid */}
       <div style={{padding:20,display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",gap:16}}>
         {shown.map(agent=>{
           const st = stats[agent.agentCode]||{};
@@ -2320,18 +2409,13 @@ function TLAgentsView({ user, agents: initAgents, refreshAgents }) {
           const qualRuleCount = (agent.qualificationRules||[]).length;
           return (
             <div key={agent.agentCode} style={{background:"#fff",border:"1.5px solid var(--border)",borderRadius:12,overflow:"hidden",position:"relative"}}>
-              {/* Edit pencil */}
               <button onClick={()=>{ setEditAgent(agent); setMsg({type:"",text:""}); setMode("edit"); }} style={{position:"absolute",top:12,right:12,background:"#f5f5f5",border:"1px solid #e0e0e0",borderRadius:6,width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:14}}>✏️</button>
-
-              {/* Agent avatar + name */}
               <div style={{padding:"20px 20px 14px"}}>
                 <div style={{width:56,height:56,borderRadius:12,background:`hsl(${agent.agentCode.charCodeAt(0)*37%360},60%,55%)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,marginBottom:12}}>🎙️</div>
                 <div style={{fontFamily:"var(--fd)",fontWeight:900,fontSize:16,marginBottom:2}}>{agent.displayName}</div>
                 <div style={{fontSize:11,color:"var(--muted)",fontFamily:"var(--fm)",marginBottom:8}}>{agent.voicePersona||"—"}, {agent.language} · <span style={{fontFamily:"var(--fm)",color:"#888"}}>{agent.agentCode}</span></div>
                 <div style={{fontSize:11,color:"var(--muted)",lineHeight:1.5,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{agent.description||"No description."}</div>
               </div>
-
-              {/* Stats row */}
               <div style={{borderTop:"1px solid #f0f0f0",padding:"10px 20px",display:"flex",gap:16,alignItems:"center"}}>
                 <div style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"var(--muted)"}}>
                   <span style={{fontSize:14}}>📋</span><span><b style={{color:"var(--black)"}}>{st.campaigns||0}</b> Campaigns</span>
@@ -2340,12 +2424,10 @@ function TLAgentsView({ user, agents: initAgents, refreshAgents }) {
                   <span style={{fontSize:14}}>📡</span><span><b style={{color:"var(--black)"}}>{connRate}%</b> Connection rate</span>
                 </div>
               </div>
-
-              {/* Qual rules summary */}
               <div style={{borderTop:"1px solid #f0f0f0",padding:"10px 20px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                 <div style={{fontSize:11,color:"var(--muted)"}}>
                   {qualRuleCount>0
-                    ? <span style={{color:"var(--green)",fontWeight:700}}>✓ {qualRuleCount} qual rule{qualRuleCount>1?"s":""} set</span>
+                    ? <span style={{color:"var(--green)",fontWeight:700}}>✓ {qualRuleCount} qual rule{qualRuleCount>1?"s":""}</span>
                     : <span style={{color:"var(--red)"}}>⚠ No qualification rules</span>
                   }
                 </div>
@@ -2357,17 +2439,39 @@ function TLAgentsView({ user, agents: initAgents, refreshAgents }) {
         {shown.length===0 && (
           <div style={{gridColumn:"1/-1",padding:"48px 0",textAlign:"center"}}>
             <div style={{fontSize:40,marginBottom:12}}>🤖</div>
-            <div style={{fontFamily:"var(--fd)",fontWeight:900,fontSize:16,marginBottom:8}}>{tab==="active"?"No active agents":"No inactive agents"}</div>
+            <div style={{fontFamily:"var(--fd)",fontWeight:900,fontSize:16,marginBottom:8}}>
+              {tab==="active"?"No active agents":"No inactive agents"}
+            </div>
             <div style={{fontSize:12,color:"var(--muted)",marginBottom:20}}>Create a new agent or add one by Agent ID</div>
             <button className="t-btn t-btn-black" onClick={()=>{ setEditAgent(null); setMsg({type:"",text:""}); setMode("create"); }}>+ Create new Agent</button>
           </div>
         )}
       </div>
+
+      {/* Agents visible to recruiters (added by TL/IC on team) — only show for TL context */}
+      {othersAgents.length > 0 && (
+        <div style={{borderTop:"2px solid var(--black)"}}>
+          <div className="agent-group-hd">
+            <span>Also visible to your team's recruiters</span>
+            <span style={{fontWeight:400,color:"var(--muted)",fontSize:9}}>{othersAgents.length} agent{othersAgents.length!==1?"s":""} added by other TL/ICs on your team</span>
+          </div>
+          <div style={{padding:"12px 20px",display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:12}}>
+            {othersAgents.map(agent=>(
+              <div key={agent.agentCode} style={{background:"#fafafa",border:"1.5px solid #e0e0e0",borderRadius:8,padding:14,opacity:.85}}>
+                <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:13,marginBottom:2}}>{agent.displayName}</div>
+                <div style={{fontSize:10,color:"var(--muted)",fontFamily:"var(--fm)",marginBottom:4}}>{agent.agentCode}</div>
+                <div style={{fontSize:10,color:"var(--muted)"}}>Added by: <span style={{fontWeight:600}}>{agent.createdBy}</span></div>
+                <div style={{marginTop:6,fontSize:10,color:"var(--muted)"}}>Recruiters on your team can use this agent</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-// ── Qual rules editor (standalone for TL) ──
+// ── TL Qual Editor (standalone) ──
 function TLQualEditor({ agent, onBack, onSaved }) {
   const resultFields = useMemo(()=>{
     const s=agent?.resultSchema||{};
@@ -2386,7 +2490,7 @@ function TLQualEditor({ agent, onBack, onSaved }) {
   const [msg,setMsg]=useState({type:"",text:""});
 
   function toggleField(f){ setQualRules(p=>{ const n={...p}; if(n[f]!==undefined)delete n[f]; else n[f]=[]; return n; }); }
-  function addKw(f){ const kw=(kwInputs[f]||"").trim(); if(!kw)return; setQualRules(p=>({...p,[f]:[...( p[f]||[]),kw]})); setKwInputs(p=>({...p,[f]:""})); }
+  function addKw(f){ const kw=(kwInputs[f]||"").trim(); if(!kw)return; setQualRules(p=>({...p,[f]:[...(p[f]||[]),kw]})); setKwInputs(p=>({...p,[f]:""})); }
   function removeKw(f,kw){ setQualRules(p=>({...p,[f]:(p[f]||[]).filter(k=>k!==kw)})); }
 
   async function save(){
@@ -2456,6 +2560,8 @@ function TLQualEditor({ agent, onBack, onSaved }) {
 // ── Add by Agent ID ──
 function TLAddByIdView({ onBack, onAdd, saving, msg }) {
   const [agentId, setAgentId] = useState("");
+  const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(agentId.trim());
+  const isEmpty = !agentId.trim();
   return (
     <div className="t-fade">
       <div style={{background:"#fff",borderBottom:"1.5px solid #eee",padding:"12px 24px",display:"flex",alignItems:"center",gap:12}}>
@@ -2464,24 +2570,26 @@ function TLAddByIdView({ onBack, onAdd, saving, msg }) {
       </div>
       <div style={{padding:32,maxWidth:480}}>
         <p style={{fontSize:13,color:"var(--muted)",lineHeight:1.7,marginBottom:24}}>
-          If your admin has already created an agent in the Hunar platform, you can add it to your team by entering its Agent ID below. The agent will appear in your team's list immediately.
+          If an agent has already been created in the Hunar platform, you can add it to your list by entering its Agent ID below. The agent will appear in your list immediately.
         </p>
-        <div style={{marginBottom:20}}>
+        <div style={{marginBottom:8}}>
           <label className="t-label" style={{marginBottom:6}}>Hunar Agent ID <span style={{color:"var(--red)"}}>*</span></label>
-          <input className="t-input" style={{fontSize:13,padding:"10px 12px",fontFamily:"var(--fm)"}} placeholder="e.g. 3f2504e0-4f89-11d3-9a0c-0305e82c3301" value={agentId} onChange={e=>setAgentId(e.target.value)}/>
-          <div style={{fontSize:10,color:"var(--muted)",marginTop:4}}>Find this in the Hunar dashboard under the agent's settings.</div>
+          <input className="t-input" style={{fontSize:13,padding:"10px 12px",fontFamily:"var(--fm)",borderColor:!isEmpty&&!isValidUUID?"var(--red)":"var(--border)"}} placeholder="e.g. 3f2504e0-4f89-11d3-9a0c-0305e82c3301" value={agentId} onChange={e=>setAgentId(e.target.value)}/>
+          <div style={{fontSize:10,marginTop:4,color:!isEmpty&&!isValidUUID?"var(--red)":"var(--muted)"}}>
+            {!isEmpty && !isValidUUID ? "⚠ Must be a UUID format (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)" : "Find this in the Hunar dashboard under the agent's settings."}
+          </div>
         </div>
-        {msg.text && <div style={{marginBottom:12}}><Alert type={msg.type==="err"?"err":"ok"}>{msg.text}</Alert></div>}
-        <div style={{display:"flex",gap:10}}>
+        {msg.text && <div style={{marginBottom:12}}><Alert type={msg.type==="err"?"error":"success"}>{msg.text}</Alert></div>}
+        <div style={{display:"flex",gap:10,marginTop:16}}>
           <button className="t-btn t-btn-outline" onClick={onBack}>Cancel</button>
-          <button className="t-btn t-btn-black" disabled={saving||!agentId.trim()} onClick={()=>onAdd(agentId)}>{saving?<Spin/>:"Add Agent"}</button>
+          <button className="t-btn t-btn-black" disabled={saving||!isValidUUID} onClick={()=>onAdd(agentId)}>{saving?<Spin/>:"Add Agent"}</button>
         </div>
       </div>
     </div>
   );
 }
 
-// ── Full agent wizard for TL ──
+// ── Full agent wizard for TL/IC ──
 function TLAgentWizard({ user, editAgent, onSave, onBack, saving, msg, setMsg }) {
   const [step, setStep] = useState(1);
   const STEPS = ["Persona Details","Call Agent","Result Agent","Qualification"];
@@ -2538,7 +2646,6 @@ function TLAgentWizard({ user, editAgent, onSave, onBack, saving, msg, setMsg })
         <button style={{background:"none",border:"none",cursor:"pointer",fontFamily:"var(--fd)",fontWeight:700,fontSize:12,color:"var(--black)"}} onClick={onBack}>← Back</button>
         <span style={{fontFamily:"var(--fd)",fontWeight:900,fontSize:14}}>{editAgent?"Edit Agent":"Create New Agent"}</span>
       </div>
-      {/* Step bar */}
       <div style={{display:"flex",alignItems:"center",padding:"18px 32px",borderBottom:"1px solid #eee",background:"#fff",flexShrink:0}}>
         {STEPS.map((label,i)=>{
           const s=i+1,done=step>s,active=step===s;
@@ -2566,7 +2673,6 @@ function TLAgentWizard({ user, editAgent, onSave, onBack, saving, msg, setMsg })
             <div style={{display:"flex",justifyContent:"space-between"}}><button className="t-btn t-btn-outline" onClick={onBack}>Cancel</button><button className="t-btn t-btn-black" style={{borderRadius:20}} disabled={!form.displayName||!form.language||!form.voicePersona} onClick={()=>setStep(2)}>Proceed to Call Agent →</button></div>
           </div>
         )}
-        {/* Step 2 */}
         {step===2 && (
           <div style={{display:"flex",flex:1}}>
             <div style={{flex:1,padding:"28px 32px",overflowY:"auto"}}>
@@ -2575,15 +2681,14 @@ function TLAgentWizard({ user, editAgent, onSave, onBack, saving, msg, setMsg })
               <div style={{marginBottom:14}}><label className="t-label" style={{marginBottom:5}}>Introductory Statement <span style={{color:"var(--red)"}}>*</span></label><input className="t-input" style={{fontSize:12,color:"#6739b7"}} value={form.introduction} onChange={e=>setForm({...form,introduction:e.target.value})}/></div>
               <div style={{marginBottom:20}}>
                 <label className="t-label" style={{marginBottom:5}}>Call Prompt <span style={{color:"var(--red)"}}>*</span></label>
-                <div style={{background:"#fffbeb",border:"1px solid #fcd34d",padding:"7px 10px",fontSize:10,color:"#92400e",marginBottom:6}}>📌 Define the agent persona, context, and expected call flow. Be specific.</div>
-                <textarea className="t-input" rows={14} style={{fontSize:11,fontFamily:"var(--fm)",resize:"vertical",lineHeight:1.6}} placeholder={"1. My Identity\nYour name, role, personality, tone.\n\n2. Context\nWho are you calling and why.\n\n3. Conversation Flow\n• Opening\n• Key questions\n• Objection handling\n• How to qualify/close"} value={form.agentPrompt} onChange={e=>setForm({...form,agentPrompt:e.target.value})}/>
+                <div style={{background:"#fffbeb",border:"1px solid #fcd34d",padding:"7px 10px",fontSize:10,color:"#92400e",marginBottom:6}}>📌 Define the agent persona, context, and expected call flow.</div>
+                <textarea className="t-input" rows={14} style={{fontSize:11,fontFamily:"var(--fm)",resize:"vertical",lineHeight:1.6}} placeholder={"1. My Identity\n2. Context\n3. Conversation Flow"} value={form.agentPrompt} onChange={e=>setForm({...form,agentPrompt:e.target.value})}/>
               </div>
               <div style={{display:"flex",justifyContent:"space-between"}}><button className="t-btn t-btn-outline" onClick={()=>setStep(1)}>← Back</button><button className="t-btn t-btn-black" disabled={!form.objective||!form.agentPrompt} onClick={()=>setStep(3)}>Proceed to Result Agent →</button></div>
             </div>
             <Preview/>
           </div>
         )}
-        {/* Step 3 */}
         {step===3 && (
           <div style={{display:"flex",flex:1}}>
             <div style={{flex:1,padding:"28px 32px",overflowY:"auto"}}>
@@ -2609,20 +2714,18 @@ function TLAgentWizard({ user, editAgent, onSave, onBack, saving, msg, setMsg })
               </div>
               <div style={{marginBottom:20}}>
                 <label className="t-label" style={{marginBottom:5}}>Result Prompt <span style={{color:"var(--red)"}}>*</span></label>
-                <div style={{background:"#fffbeb",border:"1px solid #fcd34d",padding:"7px 10px",fontSize:10,color:"#92400e",marginBottom:6}}>📌 Instruct the AI how to extract result values from the call.</div>
-                <textarea className="t-input" rows={10} style={{fontSize:11,fontFamily:"var(--fm)",resize:"vertical",lineHeight:1.6}} placeholder={"Your Role\nEvaluate the call and extract key information.\n• Understand what happened\n• Extract data accurately\n• Do not add opinions"} value={form.resultPrompt} onChange={e=>setForm({...form,resultPrompt:e.target.value})}/>
+                <textarea className="t-input" rows={10} style={{fontSize:11,fontFamily:"var(--fm)",resize:"vertical",lineHeight:1.6}} placeholder={"Evaluate the call and extract key information."} value={form.resultPrompt} onChange={e=>setForm({...form,resultPrompt:e.target.value})}/>
               </div>
               <div style={{display:"flex",justifyContent:"space-between"}}><button className="t-btn t-btn-outline" onClick={()=>setStep(2)}>← Back</button><button className="t-btn t-btn-black" disabled={form.resultFields.filter(f=>f.name).length===0||!form.resultPrompt} onClick={()=>setStep(4)}>Proceed to Qualification →</button></div>
             </div>
             <Preview/>
           </div>
         )}
-        {/* Step 4 */}
         {step===4 && (
           <div style={{display:"flex",flex:1}}>
             <div style={{flex:1,padding:"28px 32px",overflowY:"auto"}}>
               <h2 style={{fontFamily:"var(--fd)",fontWeight:900,fontSize:20,marginBottom:8}}>Qualification Rules</h2>
-              <p style={{fontSize:12,color:"var(--muted)",marginBottom:20,lineHeight:1.6}}>Choose which result fields determine a qualified lead and what keyword values qualify.</p>
+              <p style={{fontSize:12,color:"var(--muted)",marginBottom:20,lineHeight:1.6}}>Choose which result fields determine a qualified lead.</p>
               {definedFields.length===0
                 ? <Alert type="info">← Go back and define at least one result field first.</Alert>
                 : (
@@ -2660,6 +2763,8 @@ function TLAgentWizard({ user, editAgent, onSave, onBack, saving, msg, setMsg })
     </div>
   );
 }
+
+// ─────────────────────────────────────────────────────────────
 // APP ROOT
 // ─────────────────────────────────────────────────────────────
 function App() {
@@ -2677,7 +2782,11 @@ function App() {
 
   async function refreshMe(){ const r=await api("me",{}); if(r.ok){setUser(r.user);setToday(r.today);setAgents(r.agents||[]);} }
   async function refreshTeams(){ const r=await api("listTeams",{}); if(r.ok)setTeams(r.teams||[]); }
-  async function refreshUsers(){ if(user&&user.role!=="recruiter"){const r=await api("listUsers",{});if(r.ok)setUsers(r.users||[]);} }
+  async function refreshUsers(){
+    if(user && user.role!=="recruiter" && user.role!=="individual_contributor"){
+      const r=await api("listUsers",{}); if(r.ok)setUsers(r.users||[]);
+    }
+  }
 
   useEffect(()=>{
     const params=new URLSearchParams(window.location.search);
@@ -2692,7 +2801,7 @@ function App() {
     })();
   },[]);
 
-  useEffect(()=>{if(bootScreen==="app"){refreshTeams();refreshUsers();}},[bootScreen]);
+  useEffect(()=>{if(bootScreen==="app"){refreshTeams();refreshUsers();}},[bootScreen,user]);
 
   async function onLogout(){ await api("logout",{}); localStorage.removeItem("session"); window.location.search=""; }
   function onViewLeads(agentCode, requestId) { setLeadsFilter({agentCode, requestId}); setView("leads"); }
@@ -2701,6 +2810,7 @@ function App() {
   if(bootScreen==="login") return <LoginScreen onLoggedIn={u=>{setUser(u);setBootScreen("app");refreshMe();}} goForgot={()=>setBootScreen("forgot")}/>;
   if(bootScreen==="forgot") return <ForgotScreen goLogin={()=>setBootScreen("login")}/>;
   if(bootScreen==="setup") return <SetupScreen token={setupToken} goLogin={()=>{setBootScreen("login");window.history.replaceState({},"",window.location.pathname);}} onCompleted={u=>{setUser(u);setBootScreen("app");window.history.replaceState({},"",window.location.pathname);refreshMe();}}/>;
+  if(!user) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><Spin/></div>;
 
   let content=null;
   if(view==="dashboard") content=<DashboardView user={user} agents={agents} selectedAgent={selAgent} setSelectedAgent={setSelAgent}/>;
@@ -2708,7 +2818,7 @@ function App() {
   else if(view==="trigger") content=<UploadView user={user} agents={agents} refreshMe={refreshMe}/>;
   else if(view==="campaigns") content=<CampaignsView agents={agents} user={user} teams={teams} onViewLeads={onViewLeads}/>;
   else if(view==="agents") content=<AgentsView onChange={setAgents}/>;
-  else if(view==="myagents") content=<TLAgentsView user={user} agents={agents} refreshAgents={setAgents}/>;
+  else if(view==="myagents") content=<TLAgentsView user={user} agents={agents} refreshAgents={newAgents=>{setAgents(newAgents);}}/>;
   else if(view==="users") content=<UsersView user={user} teams={teams}/>;
   else if(view==="teams") content=<TeamsView user={user} agents={agents}/>;
 
