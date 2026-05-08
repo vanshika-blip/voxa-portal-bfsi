@@ -579,8 +579,9 @@ const NAV_ITEMS = [
   { id:"trigger",   label:"Trigger Campaign" },
   { id:"campaigns", label:"Campaigns" },
   { id:"myagents",  label:"Agents", showFor:["team_lead","individual_contributor"] },
-  { id:"users",     label:"Users", hideFor:["recruiter","individual_contributor"] },
-  { id:"teams",     label:"Teams", hideFor:["recruiter","team_lead","individual_contributor"] },
+  { id:"users",      label:"Users",       hideFor:["recruiter","individual_contributor"] },
+  { id:"teams",      label:"Teams",       hideFor:["recruiter","team_lead","individual_contributor"] },
+  { id:"agentintel", label:"Agent Intel", superOnly:true },
 ];
 
 // ── Multi-select + search column filter ──
@@ -3081,7 +3082,8 @@ function App() {
   else if(view==="campaigns") content=<CampaignsView agents={agents} user={user} teams={teams} onViewLeads={onViewLeads}/>;
   else if(view==="myagents") content=<TLAgentsView user={user} agents={agents} refreshAgents={newAgents=>{setAgents(newAgents);}}/>;
   else if(view==="users") content=<UsersView user={user} teams={teams}/>;
-  else if(view==="teams") content=<TeamsView user={user} agents={agents}/>;
+  else if(view==="teams")      content=<TeamsView user={user} agents={agents}/>;
+  else if(view==="agentintel") content=<AgentIntelView user={user} agents={agents}/>;
 
   return (
     <>
@@ -3095,8 +3097,308 @@ function App() {
 
 
 // ─────────────────────────────────────────────────────────────
-// SETUP / DATABASE MIGRATION VIEW (super admin only)
+// AGENT INTEL VIEW (super admin only)
 // ─────────────────────────────────────────────────────────────
+function AgentIntelView({ user, agents }) {
+  const [users, setUsers]               = useState([]);
+  const [campaigns, setCampaigns]       = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [expandedTeams, setExpandedTeams] = useState({});
+  const [expandedICs, setExpandedICs]   = useState({});
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      api("listUsers", {}),
+      api("getCampaigns", {}),
+    ]).then(([ur, cr]) => {
+      if (ur.ok) setUsers(ur.users || []);
+      if (cr.ok) setCampaigns(cr.campaigns || []);
+      setLoading(false);
+    });
+  }, []);
+
+  // Per-agent campaign stats
+  const agentStats = useMemo(() => {
+    const map = {};
+    campaigns.forEach(c => {
+      if (!map[c.agentCode]) map[c.agentCode] = { campaigns:0, calls:0, minutes:0, qualified:0, connected:0 };
+      map[c.agentCode].campaigns += 1;
+      map[c.agentCode].calls     += Number(c.contactsCount || 0);
+      map[c.agentCode].minutes   += Number(c.actualMinutes || 0);
+      map[c.agentCode].qualified += Number(c.qualified     || 0);
+      map[c.agentCode].connected += Number(c.connected     || 0);
+    });
+    return map;
+  }, [campaigns]);
+
+  // Agents indexed by creator
+  const agentsByCreator = useMemo(() => {
+    const m = {};
+    agents.forEach(a => {
+      const key = a.createdBy || "__system__";
+      if (!m[key]) m[key] = [];
+      m[key].push(a);
+    });
+    return m;
+  }, [agents]);
+
+  // Team groups: team -> [users who are TL or IC]
+  const teamGroups = useMemo(() => {
+    const g = {};
+    users
+      .filter(u => u.role === "team_lead" || u.role === "individual_contributor")
+      .forEach(u => {
+        const team = u.team || "__noteam__";
+        if (!g[team]) g[team] = [];
+        g[team].push(u);
+      });
+    return g;
+  }, [users]);
+
+  function icTotals(email) {
+    return (agentsByCreator[email] || []).reduce((acc, a) => {
+      const s = agentStats[a.agentCode] || {};
+      acc.campaigns += s.campaigns || 0;
+      acc.calls     += s.calls     || 0;
+      acc.minutes   += s.minutes   || 0;
+      acc.qualified += s.qualified || 0;
+      return acc;
+    }, { campaigns:0, calls:0, minutes:0, qualified:0 });
+  }
+
+  const teams     = Object.keys(teamGroups).sort();
+  const knownCreators = new Set(
+    users.filter(u => u.role==="team_lead"||u.role==="individual_contributor").map(u=>u.email)
+  );
+  const orphaned = agents.filter(a => !knownCreators.has(a.createdBy));
+
+  // Global KPIs
+  const totalCampaigns = campaigns.length;
+  const totalCalls     = campaigns.reduce((s,c) => s + Number(c.contactsCount||0), 0);
+  const totalMinutes   = campaigns.reduce((s,c) => s + Number(c.actualMinutes||0), 0);
+  const totalQualified = campaigns.reduce((s,c) => s + Number(c.qualified||0), 0);
+
+  if (loading) return <div style={{padding:80,textAlign:"center"}}><Spin/></div>;
+
+  const AgentRow = ({ a, extraCol }) => {
+    const s   = agentStats[a.agentCode] || {};
+    const conv = s.calls > 0 ? Math.round((s.qualified||0)/s.calls*100) : 0;
+    return (
+      <tr key={a.agentCode}>
+        <td>
+          <div className="nm">{a.displayName||a.agentCode}</div>
+          <div className="nm-sub" style={{fontFamily:"var(--fm)",fontSize:9,color:"#999",marginTop:1}}>{a.agentCode}</div>
+        </td>
+        <td>
+          <span className="t-mono" style={{fontSize:10,color:"var(--muted)",wordBreak:"break-all",maxWidth:200,display:"block"}}>
+            {a.agentId || "—"}
+          </span>
+        </td>
+        {extraCol && <td><span className="t-mono" style={{fontSize:11}}>{a.createdBy||"system"}</span></td>}
+        <td>
+          {a.addedById
+            ? <span className="t-tag t-tag-purple">LINKED</span>
+            : <span className="t-tag t-tag-blue">CREATED</span>}
+        </td>
+        <td>
+          {a.active
+            ? <span className="t-tag t-tag-green">ACTIVE</span>
+            : <span className="t-tag t-tag-gray">INACTIVE</span>}
+        </td>
+        <td><span className="t-mono">{s.campaigns||0}</span></td>
+        <td><span className="t-mono">{(s.calls||0).toLocaleString()}</span></td>
+        <td><span className="t-mono">{Math.round(s.minutes||0)}m</span></td>
+        <td>
+          <span className="t-mono" style={{color:(s.qualified||0)>0?"var(--green)":"var(--muted)"}}>
+            {s.qualified||0}
+          </span>
+        </td>
+        <td>
+          {s.calls > 0
+            ? <span style={{fontFamily:"var(--fd)",fontWeight:900,fontSize:12,
+                color:conv>10?"var(--green)":conv>5?"var(--black)":"var(--red)"}}>{conv}%</span>
+            : <span style={{color:"#ccc"}}>—</span>}
+        </td>
+      </tr>
+    );
+  };
+
+  const AgentTable = ({ agents: list, extraCol }) => (
+    <div className="t-tbl-wrap">
+      <table className="t-tbl">
+        <thead>
+          <tr>
+            <th>Agent</th>
+            <th>Agent ID</th>
+            {extraCol && <th>Created By</th>}
+            <th>Type</th>
+            <th>Status</th>
+            <th>Campaigns</th>
+            <th>Calls</th>
+            <th>Minutes</th>
+            <th>Qualified</th>
+            <th>Conv %</th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.map(a => <AgentRow key={a.agentCode} a={a} extraCol={extraCol}/>)}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  return (
+    <div className="t-fade">
+      {/* Masthead */}
+      <div className="t-mast">
+        <div>
+          <div className="t-mast-title">Agent Intel</div>
+          <div className="t-mast-sub">Agent usage by team &amp; IC · All-time performance</div>
+        </div>
+        <div className="t-mast-r">
+          <div style={{display:"flex",gap:6,alignItems:"center",fontSize:11,fontFamily:"var(--fm)",color:"rgba(255,255,255,.5)"}}>
+            <span>{agents.length} agents</span>
+            <span>·</span>
+            <span>{users.filter(u=>u.role==="team_lead"||u.role==="individual_contributor").length} ICs/TLs</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Global KPI strip */}
+      <div className="t-kpis" style={{gridTemplateColumns:"repeat(5,1fr)"}}>
+        {[
+          { label:"Total Agents",   val: agents.length,                         color:"var(--blue)" },
+          { label:"Active Agents",  val: agents.filter(a=>a.active).length,     color:"var(--green)" },
+          { label:"Campaigns Run",  val: totalCampaigns.toLocaleString(),        color:"var(--black)" },
+          { label:"Total Calls",    val: totalCalls.toLocaleString(),            color:"var(--black)" },
+          { label:"Total Qualified",val: totalQualified.toLocaleString(),        color:"var(--red)" },
+        ].map(k => (
+          <div key={k.label} className="t-kpi">
+            <div className="t-kpi-accent" style={{background:k.color}}/>
+            <div className="t-kpi-label">{k.label}</div>
+            <div className="t-kpi-value" style={{fontSize:24}}>{k.val}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Team-wise accordion */}
+      <div style={{padding:"16px 20px",display:"flex",flexDirection:"column",gap:12}}>
+        {teams.map(team => {
+          const ics      = teamGroups[team];
+          const teamName = team === "__noteam__" ? "No Team Assigned" : team;
+          const isOpen   = expandedTeams[team] !== false; // default expanded
+
+          const teamTotal = ics.reduce((acc, u) => {
+            const t = icTotals(u.email);
+            acc.campaigns += t.campaigns;
+            acc.calls     += t.calls;
+            acc.minutes   += t.minutes;
+            acc.qualified += t.qualified;
+            acc.agents    += (agentsByCreator[u.email]||[]).length;
+            return acc;
+          }, { campaigns:0, calls:0, minutes:0, qualified:0, agents:0 });
+
+          return (
+            <div key={team} style={{border:"2px solid var(--black)",borderRadius:2,overflow:"hidden"}}>
+              {/* Team header */}
+              <div
+                onClick={()=>setExpandedTeams(p=>({...p,[team]:!isOpen}))}
+                style={{background:"var(--black)",color:"#fff",padding:"12px 18px",cursor:"pointer",
+                  display:"flex",alignItems:"center",gap:14,userSelect:"none"}}
+              >
+                <span style={{fontFamily:"var(--fd)",fontWeight:900,fontSize:14,letterSpacing:".06em",
+                  textTransform:"uppercase",flex:1}}>{teamName}</span>
+                <div style={{display:"flex",gap:10,fontSize:10,fontFamily:"var(--fm)",color:"rgba(255,255,255,.55)"}}>
+                  <span>{ics.length} member{ics.length!==1?"s":""}</span>
+                  <span>·</span>
+                  <span>{teamTotal.agents} agent{teamTotal.agents!==1?"s":""}</span>
+                  <span>·</span>
+                  <span>{teamTotal.campaigns} campaigns</span>
+                  <span>·</span>
+                  <span>{teamTotal.calls.toLocaleString()} calls</span>
+                  <span>·</span>
+                  <span style={{color:"#6ee7b7"}}>{teamTotal.qualified} qualified</span>
+                </div>
+                <span style={{color:"rgba(255,255,255,.4)",fontSize:16,marginLeft:8}}>{isOpen?"▾":"▸"}</span>
+              </div>
+
+              {isOpen && ics.map(u => {
+                const myAgents = agentsByCreator[u.email] || [];
+                const icOpen   = expandedICs[u.email] !== false;
+                const totals   = icTotals(u.email);
+
+                return (
+                  <div key={u.email} style={{borderTop:"1px solid var(--border)"}}>
+                    {/* IC row */}
+                    <div
+                      onClick={()=>setExpandedICs(p=>({...p,[u.email]:!icOpen}))}
+                      style={{padding:"10px 18px",display:"flex",alignItems:"center",gap:12,
+                        cursor:"pointer",background:"#f5f5f5",userSelect:"none"}}
+                    >
+                      <Disc name={u.name||u.email}/>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontFamily:"var(--fd)",fontWeight:900,fontSize:13}}>{u.name||u.email}</div>
+                        <div style={{fontFamily:"var(--fm)",fontSize:10,color:"var(--muted)",marginTop:1,display:"flex",gap:8,alignItems:"center"}}>
+                          <span>{u.email}</span>
+                          <RoleTag role={u.role}/>
+                        </div>
+                      </div>
+                      {/* IC totals */}
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                        <span className="t-tag t-tag-blue" style={{fontFamily:"var(--fm)",fontSize:9}}>
+                          {myAgents.length} agent{myAgents.length!==1?"s":""}
+                        </span>
+                        <span className="chip-calls agent-group-chip" style={{fontFamily:"var(--fm)",fontSize:9,padding:"2px 7px",background:"#e8f0fe",color:"#1e40af",borderRadius:3,fontWeight:700}}>
+                          {totals.campaigns} camp.
+                        </span>
+                        <span style={{fontFamily:"var(--fm)",fontSize:9,padding:"2px 7px",background:"#fef9c3",color:"#854d0e",borderRadius:3,fontWeight:700}}>
+                          {totals.calls.toLocaleString()} calls
+                        </span>
+                        <span style={{fontFamily:"var(--fm)",fontSize:9,padding:"2px 7px",background:"#d1fae5",color:"#065f46",borderRadius:3,fontWeight:700}}>
+                          {totals.qualified} QL
+                        </span>
+                        <span style={{fontFamily:"var(--fm)",fontSize:9,padding:"2px 7px",background:"#ede9fe",color:"#5b21b6",borderRadius:3,fontWeight:700}}>
+                          {Math.round(totals.minutes)}m
+                        </span>
+                      </div>
+                      <span style={{color:"var(--muted)",fontSize:14,marginLeft:6}}>{icOpen?"▾":"▸"}</span>
+                    </div>
+
+                    {icOpen && (
+                      myAgents.length === 0
+                        ? <div style={{padding:"14px 20px",fontSize:11,color:"var(--muted)",fontFamily:"var(--fm)",
+                            background:"#fff",borderTop:"1px solid #f0f0f0"}}>No agents created by this member.</div>
+                        : <AgentTable agents={myAgents} extraCol={false}/>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+
+        {/* Orphaned / super-admin agents */}
+        {orphaned.length > 0 && (
+          <div style={{border:"1.5px solid var(--border)",borderRadius:2,overflow:"hidden"}}>
+            <div style={{background:"#f0f0f0",padding:"12px 18px",fontFamily:"var(--fd)",fontWeight:900,
+              fontSize:11,letterSpacing:".12em",textTransform:"uppercase",color:"var(--muted)",display:"flex",gap:10}}>
+              <span>Other Agents</span>
+              <span style={{fontWeight:400,color:"#aaa"}}>· super admin / system · {orphaned.length} agent{orphaned.length!==1?"s":""}</span>
+            </div>
+            <AgentTable agents={orphaned} extraCol={true}/>
+          </div>
+        )}
+
+        {teams.length === 0 && orphaned.length === 0 && (
+          <div className="t-empty">No agents or team members found.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 function SetupView() {
   const [statuses, setStatuses] = useState({});
   const [busy, setBusy] = useState({});
