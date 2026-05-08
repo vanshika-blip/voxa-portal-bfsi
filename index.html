@@ -2517,17 +2517,25 @@ setMsg({type:"success",text:editAgent?"Agent updated!":"Agent created!"});
   async function doAddById(agentId) {
   if(!agentId.trim()){ setMsg({type:"error",text:"Enter an Agent ID"}); return; }
   setSaving(true); setMsg({type:"",text:""});
-  const r = await api("addAgentById",{agentId:agentId.trim()});
-  setSaving(false);
-  if(!r.ok){ setMsg({type:"error",text:r.message||r.error}); return; }
-  const me = await api("me",{});
-  if(me.ok){
-    setAgents(me.agents||[]);
-    refreshAgents&&refreshAgents(me.agents||[]);
-    const newAgent = (me.agents||[]).find(a=>a.agentCode===r.agentCode);
-    if(newAgent) setAddedAgentForQual(newAgent);
+  try {
+    const r = await api("addAgentById",{agentId:agentId.trim()});
+    if(!r.ok){
+      setMsg({type:"error",text:r.message||r.error||"Failed to add agent."});
+      return;
+    }
+    const me = await api("me",{});
+    if(me.ok){
+      setAgents(me.agents||[]);
+      refreshAgents&&refreshAgents(me.agents||[]);
+      const newAgent = (me.agents||[]).find(a=>a.agentCode===r.agentCode);
+      if(newAgent) setAddedAgentForQual(newAgent);
+    }
+    setMsg({type:"success",text:"Agent added! Now set qualification rules."});
+  } catch(e) {
+    setMsg({type:"error",text:"Network error: "+e.message});
+  } finally {
+    setSaving(false);
   }
-  setMsg({type:"success",text:"Agent added! Now set qualification rules."});
 }
 
   if(mode==="create"||mode==="edit") return <TLAgentWizard user={user} editAgent={editAgent} onSave={doSave} onBack={()=>setMode("list")} saving={saving} msg={msg} setMsg={setMsg}/>;
@@ -2545,7 +2553,7 @@ setMsg({type:"success",text:editAgent?"Agent updated!":"Agent created!"});
       <div className="t-mast">
         <div><div className="t-mast-title">Agents</div><div className="t-mast-sub">Your calling agents · {myAgents.length} total</div></div>
         <div style={{display:"flex",gap:8}}>
-          <button className="t-btn t-btn-outline t-btn-sm" style={{color:"rgba(255,255,255,.7)",borderColor:"rgba(255,255,255,.3)"}} onClick={()=>{ setMode("addById"); setMsg({type:"",text:""}); }}>+ Add by Agent ID</button>
+          <button className="t-btn t-btn-outline t-btn-sm" style={{background:"#fff",color:"var(--black)",fontFamily:"var(--fd)",fontWeight:900,fontSize:11,padding:"8px 18px"}} onClick={()=>{ setMode("addById"); setMsg({type:"",text:""}); }}>+ Add by Agent ID</button>
           <button className="t-btn" style={{background:"#fff",color:"var(--black)",fontFamily:"var(--fd)",fontWeight:900,fontSize:11,padding:"8px 18px"}} onClick={()=>{ setEditAgent(null); setMsg({type:"",text:""}); setMode("create"); }}>+ Create new Agent</button>
         </div>
       </div>
