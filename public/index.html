@@ -2517,17 +2517,25 @@ setMsg({type:"success",text:editAgent?"Agent updated!":"Agent created!"});
   async function doAddById(agentId) {
   if(!agentId.trim()){ setMsg({type:"error",text:"Enter an Agent ID"}); return; }
   setSaving(true); setMsg({type:"",text:""});
-  const r = await api("addAgentById",{agentId:agentId.trim()});
-  setSaving(false);
-  if(!r.ok){ setMsg({type:"error",text:r.message||r.error}); return; }
-  const me = await api("me",{});
-  if(me.ok){
-    setAgents(me.agents||[]);
-    refreshAgents&&refreshAgents(me.agents||[]);
-    const newAgent = (me.agents||[]).find(a=>a.agentCode===r.agentCode);
-    if(newAgent) setAddedAgentForQual(newAgent);
+  try {
+    const r = await api("addAgentById",{agentId:agentId.trim()});
+    if(!r.ok){
+      setMsg({type:"error",text:r.message||r.error||"Failed to add agent."});
+      return;
+    }
+    const me = await api("me",{});
+    if(me.ok){
+      setAgents(me.agents||[]);
+      refreshAgents&&refreshAgents(me.agents||[]);
+      const newAgent = (me.agents||[]).find(a=>a.agentCode===r.agentCode);
+      if(newAgent) setAddedAgentForQual(newAgent);
+    }
+    setMsg({type:"success",text:"Agent added! Now set qualification rules."});
+  } catch(e) {
+    setMsg({type:"error",text:"Network error: "+e.message});
+  } finally {
+    setSaving(false);
   }
-  setMsg({type:"success",text:"Agent added! Now set qualification rules."});
 }
 
   if(mode==="create"||mode==="edit") return <TLAgentWizard user={user} editAgent={editAgent} onSave={doSave} onBack={()=>setMode("list")} saving={saving} msg={msg} setMsg={setMsg}/>;
