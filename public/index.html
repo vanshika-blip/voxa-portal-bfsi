@@ -356,7 +356,7 @@ const RECHARTS_OK = !!(R && R.ResponsiveContainer && R.LineChart);
 // ── API cache layer ──
 const _cache = {};
 async function api(action, payload={}, cacheMs=0) {
-  const body = JSON.stringify({ action, session: localStorage.getItem("session"), ...payload });
+  const body = JSON.stringify({ action, ...payload, session: localStorage.getItem("session") });
   const cacheKey = action + JSON.stringify(payload);
   if (cacheMs > 0 && _cache[cacheKey] && (Date.now() - _cache[cacheKey].ts) < cacheMs) {
     return _cache[cacheKey].data;
