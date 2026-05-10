@@ -3456,7 +3456,7 @@ const MT_STATUS_OPTS = ["Connected","DNP-1","DNP-2","DNP-3","DNP-4","DNP-5","Not
 const MT_LINED_OPTS  = ["Yes","No","Pending"];
 const MT_SOURCE_OPTS = ["LinkedIn","Referral","Walk-in","Job Portal","WhatsApp","Cold Call","Database","Other"];
 
-const MT_COLS = [
+const MT_COLS_BASE = [
   { key:"date",       label:"Date",          w:86,   type:"date" },
   { key:"name",       label:"Candidate Name",w:150              },
   { key:"phone",      label:"Contact",       w:115,  mono:true  },
@@ -3469,6 +3469,8 @@ const MT_COLS = [
   { key:"remarks",    label:"Remarks",       w:"auto"           },
 ];
 
+// "Added By" appears only for TL/IC/super_admin. Read-only — derived from server fields.
+const MT_COL_ADDED_BY = { key:"addedBy", label:"Added By", w:120, readOnly:true };
 function _mtEmpty() {
   return {
     _id:    Math.random().toString(36).slice(2),
@@ -3476,12 +3478,16 @@ function _mtEmpty() {
     date:   new Date().toISOString().slice(0,10),
     name:"", phone:"", location:"", client:"", role:"", source:"",
     callStatus:"", linedUp:"", remarks:"",
+    addedBy:"", addedByEmail:"", team:"",
     _saved:false, _dirty:false,
   };
 }
 function _mtFromServer(r) {
   let ds="";
   try { if(r["Date"]) ds=new Date(r["Date"]).toISOString().slice(0,10); } catch(_){}
+  const addedByName  = String(r["Added By Name"]  || "").trim();
+  const addedByEmail = String(r["Added By Email"] || "").trim();
+  const team         = String(r["Team"]           || "").trim();
   return {
     _id:        r["Unique ID"]||Math.random().toString(36).slice(2),
     uid:        r["Unique ID"]||"",
@@ -3495,6 +3501,9 @@ function _mtFromServer(r) {
     callStatus: String(r["Call Status"]    ||""),
     linedUp:    String(r["Lined-up"]       ||""),
     remarks:    String(r["Remarks"]        ||""),
+    addedBy:    addedByName || addedByEmail || "—",
+    addedByEmail,
+    team,
     _saved:true, _dirty:false,
   };
 }
@@ -3506,6 +3515,13 @@ function ManualTrackerView({ user }) {
   const [timeFil, setTimeFil] = useState("7d");
   const [saveState, setSaveState] = useState({});
   const flushingRef = useRef(new Set());
+
+  // Show "Added By" for anyone managing other people's entries
+  const showAddedBy = user.role === "team_lead" || user.role === "individual_contributor" || user.role === "super_admin";
+  const MT_COLS = useMemo(
+    () => showAddedBy ? [...MT_COLS_BASE, MT_COL_ADDED_BY] : MT_COLS_BASE,
+    [showAddedBy]
+  );
 
   async function load() {
     setLoading(true);
@@ -3725,6 +3741,13 @@ function ManualTrackerView({ user }) {
                   {MT_COLS.map(col=>{
                     const val = row[col.key]||"";
                     const isSaving = ss === "saving";
+                    if (col.readOnly) {
+                      return (
+                        <td key={col.key} style={{padding:"4px 8px",borderBottom:"1px solid #eee",borderRight:"1px solid #f5f5f5",height:30,fontSize:11,color:isSaved?"var(--black)":"#bbb",fontFamily:"var(--fb)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={row.addedByEmail||""}>
+                          {isSaved ? (val || "—") : <span style={{color:"#bbb",fontStyle:"italic"}}>auto</span>}
+                        </td>
+                      );
+                    }
                     return (
                       <td key={col.key} style={{padding:0,borderBottom:"1px solid #eee",borderRight:"1px solid #f5f5f5",height:30}}>
                         {col.type==="select"?(
