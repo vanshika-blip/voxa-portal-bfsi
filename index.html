@@ -3238,6 +3238,10 @@ function InterviewLineupView({ user }) {
     if (r.ok) setRows(r.rows || []);
   }
   useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const t = setInterval(load, 5 * 60 * 1000);
+    return () => clearInterval(t);
+  }, []);
 
   async function handleUpdate(callId, field, value) {
     if (!callId) return;
@@ -3248,14 +3252,16 @@ function InterviewLineupView({ user }) {
     if (!res.ok) load();
   }
 
-  // Time filter applied to display (counts always use full rows)
+  // Time filter applied to display (counts always use full rows).
+  // Use ONLY "Date Added" — falling back to "Started At" hides leads added today
+  // whose original call was weeks ago.
   const filteredByTime = useMemo(() => {
     if (timeFil === "all") return rows;
     const cutoff = new Date();
     if (timeFil === "today") cutoff.setHours(0,0,0,0);
     else { cutoff.setDate(cutoff.getDate() - (timeFil === "7d" ? 7 : 30)); cutoff.setHours(0,0,0,0); }
     return rows.filter(r => {
-      const d = r["Date Added"] || r["Started At"];
+      const d = r["Date Added"];
       if (!d) return false;
       try { return new Date(d) >= cutoff; } catch { return false; }
     });
@@ -3267,7 +3273,7 @@ function InterviewLineupView({ user }) {
     if (days === 0) cutoff.setHours(0,0,0,0);
     else { cutoff.setDate(cutoff.getDate()-days); cutoff.setHours(0,0,0,0); }
     return rows.filter(r => {
-      const d = r["Date Added"] || r["Started At"];
+      const d = r["Date Added"];
       if (!d) return false;
       try { return new Date(d) >= cutoff; } catch { return false; }
     }).length;
@@ -3452,13 +3458,14 @@ const MT_SOURCE_OPTS = ["LinkedIn","Referral","Walk-in","Job Portal","WhatsApp",
 
 const MT_COLS = [
   { key:"date",       label:"Date",          w:86,   type:"date" },
-  { key:"name",       label:"Candidate Name",w:155              },
+  { key:"name",       label:"Candidate Name",w:150              },
   { key:"phone",      label:"Contact",       w:115,  mono:true  },
+  { key:"location",   label:"Location",      w:90               },
   { key:"client",     label:"Client",        w:90               },
   { key:"role",       label:"Role",          w:100              },
   { key:"source",     label:"Source",        w:90               },
   { key:"callStatus", label:"Call Status",   w:130,  type:"select", opts:MT_STATUS_OPTS },
-  { key:"linedUp",    label:"Lined Up",      w:86,   type:"select", opts:MT_LINED_OPTS  },
+  { key:"linedUp",    label:"Lined Up",      w:80,   type:"select", opts:MT_LINED_OPTS  },
   { key:"remarks",    label:"Remarks",       w:"auto"           },
 ];
 
@@ -3467,7 +3474,7 @@ function _mtEmpty() {
     _id:    Math.random().toString(36).slice(2),
     uid:    "",
     date:   new Date().toISOString().slice(0,10),
-    name:"", phone:"", client:"", role:"", source:"",
+    name:"", phone:"", location:"", client:"", role:"", source:"",
     callStatus:"", linedUp:"", remarks:"",
     _saved:false, _dirty:false,
   };
@@ -3481,6 +3488,7 @@ function _mtFromServer(r) {
     date:       ds,
     name:       String(r["Candidate Name"]||""),
     phone:      String(r["Contact Number"] ||""),
+    location:   String(r["Location"]       ||""),
     client:     String(r["Client"]         ||""),
     role:       String(r["Role"]           ||""),
     source:     String(r["Source"]         ||""),
@@ -3497,6 +3505,7 @@ function ManualTrackerView({ user }) {
   const [loading, setLoading] = useState(true);
   const [timeFil, setTimeFil] = useState("7d");
   const [saveState, setSaveState] = useState({});
+  const flushingRef = useRef(new Set());
 
   async function load() {
     setLoading(true);
@@ -3505,6 +3514,10 @@ function ManualTrackerView({ user }) {
     if (r.ok) setSaved((r.rows||[]).map(_mtFromServer));
   }
   useEffect(()=>{ load(); },[]);
+  useEffect(()=>{
+    const t = setInterval(load, 5 * 60 * 1000);
+    return ()=>clearInterval(t);
+  },[]);
 
   function patchSaved(uid, key, val) {
     setSaved(prev=>prev.map(r=>r.uid===uid?{...r,[key]:val,_dirty:true}:r));
@@ -3519,22 +3532,44 @@ function ManualTrackerView({ user }) {
   }
 
   async function flushEmpty(id) {
+    if (flushingRef.current.has(id)) return; // prevent re-entrancy / race
     const row = empties.find(r=>r._id===id);
     if (!row||!row.name.trim()||!row.phone.trim()) return;
+    flushingRef.current.add(id);
     _setSS(id,"saving");
-    const res = await api("addManualEntry",{entry:{
-      date:row.date, candidateName:row.name, contactNumber:row.phone,
-      client:row.client, role:row.role, source:row.source, location:"",
-    }});
-    if (res.ok) {
-      if (row.callStatus||row.linedUp||row.remarks) {
-        await api("updateManualEntry",{uniqueId:res.uniqueId,fields:{"Call Status":row.callStatus,"Lined-up":row.linedUp,"Remarks":row.remarks}});
+    try {
+      const res = await api("addManualEntry",{entry:{
+        date:row.date, candidateName:row.name, contactNumber:row.phone,
+        client:row.client, role:row.role, source:row.source, location:row.location||"",
+      }});
+      if (!res.ok) { _setSS(id,null); return; }
+
+      // After save, fetch latest empty-row state — user may have typed more while we awaited
+      const latest = empties.find(r=>r._id===id) || row;
+      const followUpFields = {};
+      if (latest.callStatus !== row.callStatus || row.callStatus) followUpFields["Call Status"] = latest.callStatus;
+      if (latest.linedUp    !== row.linedUp    || row.linedUp)    followUpFields["Lined-up"]    = latest.linedUp;
+      if (latest.remarks    !== row.remarks    || row.remarks)    followUpFields["Remarks"]     = latest.remarks;
+      // Also include client/role/source/date/name/phone/location if they changed during the in-flight save
+      if (latest.client   !== row.client)   followUpFields["Client"]         = latest.client;
+      if (latest.role     !== row.role)     followUpFields["Role"]           = latest.role;
+      if (latest.source   !== row.source)   followUpFields["Source"]         = latest.source;
+      if (latest.location !== row.location) followUpFields["Location"]       = latest.location;
+      if (latest.date     !== row.date)     followUpFields["Date"]           = latest.date;
+      if (latest.name     !== row.name)     followUpFields["Candidate Name"] = latest.name;
+      if (latest.phone    !== row.phone)    followUpFields["Contact Number"] = latest.phone;
+
+      if (Object.keys(followUpFields).length > 0) {
+        await api("updateManualEntry",{uniqueId:res.uniqueId,fields:followUpFields});
       }
-      setSaved(prev=>[...prev,{...row,uid:res.uniqueId,_id:res.uniqueId,_saved:true,_dirty:false}]);
+
+      setSaved(prev=>[...prev,{...latest,uid:res.uniqueId,_id:res.uniqueId,_saved:true,_dirty:false}]);
       setEmpties(prev=>prev.filter(r=>r._id!==id));
       _setSS(id,"ok");
-    } else {
+    } catch(e) {
       _setSS(id,null);
+    } finally {
+      flushingRef.current.delete(id);
     }
   }
 
@@ -3544,7 +3579,9 @@ function ManualTrackerView({ user }) {
     _setSS(uid,"saving");
     await api("updateManualEntry",{uniqueId:uid,fields:{
       "Candidate Name":row.name, "Contact Number":row.phone,
+      "Location":row.location||"",
       "Client":row.client, "Role":row.role, "Source":row.source,
+      "Date":row.date,
       "Call Status":row.callStatus, "Lined-up":row.linedUp, "Remarks":row.remarks,
     }});
     setSaved(prev=>prev.map(r=>r.uid===uid?{...r,_dirty:false}:r));
@@ -3687,14 +3724,16 @@ function ManualTrackerView({ user }) {
                   </td>
                   {MT_COLS.map(col=>{
                     const val = row[col.key]||"";
+                    const isSaving = ss === "saving";
                     return (
                       <td key={col.key} style={{padding:0,borderBottom:"1px solid #eee",borderRight:"1px solid #f5f5f5",height:30}}>
                         {col.type==="select"?(
                           <select
                             value={val}
+                            disabled={isSaving}
                             onChange={e=>onChange(col.key,e.target.value)}
                             onBlur={onBlur}
-                            style={cellSel}
+                            style={{...cellSel, opacity: isSaving ? 0.5 : 1}}
                           >
                             <option value="">—</option>
                             {col.opts.map(o=><option key={o} value={o}>{o}</option>)}
@@ -3703,6 +3742,7 @@ function ManualTrackerView({ user }) {
                           <input
                             type={col.type==="date"?"date":"text"}
                             value={val}
+                            disabled={isSaving}
                             placeholder={!isSaved?col.label:""}
                             onChange={e=>onChange(col.key,e.target.value)}
                             onBlur={onBlur}
@@ -3711,6 +3751,7 @@ function ManualTrackerView({ user }) {
                               ...cellInp,
                               fontFamily:col.mono?"var(--fm)":"var(--fb)",
                               color:(!val&&!isSaved)?"#bbb":"var(--black)",
+                              opacity: isSaving ? 0.5 : 1,
                             }}
                           />
                         )}
