@@ -600,6 +600,7 @@ const NAV_ITEMS = [
   { id:"lineup",    label:"Interview Lineup" },
   { id:"manual",    label:"Manual Tracker" },
   { id:"agentintel", label:"Agent Intel", superOnly:true },
+  { id:"setup",      label:"DB Setup",    superOnly:true },
 ];
 
 // ── Multi-select + search column filter ──
@@ -3204,8 +3205,9 @@ function App() {
   else if(view==="myagents") content=<TLAgentsView user={user} agents={agents} refreshAgents={newAgents=>{setAgents(newAgents);}}/>;
   else if(view==="people")     content=<PeopleView user={user} agents={agents} teams={teams}/>;
   else if(view==="lineup")     content=<div className="t-fade"><div className="t-mast"><div><div className="t-mast-title">Interview Lineup</div><div className="t-mast-sub">Coming in Slice 5</div></div></div><div className="t-empty">This page will be built in a later slice.</div></div>;
-  else if(view==="manual")     content=<div className="t-fade"><div className="t-mast"><div><div className="t-mast-title">Manual Tracker</div><div className="t-mast-sub">Coming in Slice 4</div></div></div><div className="t-empty">This page will be built in a later slice.</div></div>;
+  else if(view==="manual")     content=<ManualTrackerView user={user}/>;
   else if(view==="agentintel") content=<AgentIntelView user={user} agents={agents}/>;
+  else if(view==="setup")      content=<SetupView/>;
 
   return (
     <>
@@ -3216,7 +3218,301 @@ function App() {
     </>
   );
 }
+// ─────────────────────────────────────────────────────────────
+// MANUAL TRACKER VIEW
+// ─────────────────────────────────────────────────────────────
 
+const MT_CALL_STATUS_OPTIONS = [
+  "Connected","DNP-1","DNP-2","DNP-3","DNP-4","DNP-5",
+  "Not Interested","Call Back","Hiring On Hold","Irrelevant",
+];
+const MT_LINED_UP_OPTIONS = ["Yes","No","Pending"];
+const MT_SOURCE_OPTIONS   = ["LinkedIn","Referral","Walk-in","Job Portal","WhatsApp","Cold Call","Database","Other"];
+
+function ManualTrackerView({ user }) {
+  const [rows,    setRows]    = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [adding,  setAdding]  = useState(false);
+  const [flashMsg,setFlashMsg]= useState("");
+
+  async function refresh() {
+    setLoading(true);
+    const r = await api("getManualTracker", {});
+    setLoading(false);
+    if (r.ok) setRows(r.rows || []);
+  }
+  useEffect(() => { refresh(); }, []);
+
+  async function handleCellChange(uniqueId, field, value) {
+    // Optimistic update
+    setRows(prev => prev.map(r =>
+      String(r["Unique ID"]) === uniqueId ? {...r, [field]: value} : r
+    ));
+    const res = await api("updateManualEntry", { uniqueId, fields: { [field]: value } });
+    if (!res.ok) { refresh(); } // revert on failure
+  }
+
+  // Columns visible in the table
+  const shownCols = [
+    "Date","Candidate Name","Contact Number","Location",
+    "Client","Role","Source",
+    "Call Status","Lined-up","Remarks",
+    "Added By Name","Team",
+  ];
+
+  const { filters, filtered, colValues, setColFilter, clearFilters } = useTableFilters(rows, shownCols);
+  const hasFilters = Object.keys(filters).length > 0;
+
+  function canEdit(row) {
+    const owner = String(row["Added By Email"] || "").toLowerCase();
+    return owner === user.email.toLowerCase()
+      || user.role === "team_lead"
+      || user.role === "individual_contributor"
+      || user.role === "super_admin";
+  }
+
+  function renderCell(col, val, row) {
+    const uid    = String(row["Unique ID"] || "");
+    const strVal = String(val ?? "") || "";
+    const editable = canEdit(row);
+
+    if (col === "Call Status") {
+      if (editable) return <StatusSelect options={MT_CALL_STATUS_OPTIONS} value={strVal} onChange={v => handleCellChange(uid, "Call Status", v)}/>;
+      return <LeadPill value={strVal}/>;
+    }
+    if (col === "Lined-up") {
+      if (editable) return <StatusSelect options={MT_LINED_UP_OPTIONS} value={strVal} onChange={v => handleCellChange(uid, "Lined-up", v)}/>;
+      return strVal ? <LeadPill value={strVal}/> : <span style={{color:"#ccc"}}>—</span>;
+    }
+    if (col === "Remarks") {
+      return <RemarksCell
+        name={String(row["Candidate Name"] || "")}
+        value={strVal}
+        onSave={editable ? v => handleCellChange(uid, "Remarks", v) : undefined}
+        readOnly={!editable}
+      />;
+    }
+    if (col === "Date") return <DateCell value={strVal}/>;
+    if (!strVal) return <span style={{color:"#ccc"}}>—</span>;
+    if (col === "Contact Number") return <span className="t-mono">{strVal}</span>;
+    return <span style={{fontSize:12}}>{strVal}</span>;
+  }
+
+  const totalRows    = rows.length;
+  const connectedCnt = rows.filter(r => String(r["Call Status"]||"").toLowerCase().includes("connected")).length;
+  const linedUpCnt   = rows.filter(r => String(r["Lined-up"]||"").toLowerCase() === "yes").length;
+
+  return (
+    <div className="t-fade">
+      <div className="t-mast">
+        <div>
+          <div className="t-mast-title">Manual Tracker</div>
+          <div className="t-mast-sub">{totalRows} entries · {connectedCnt} connected · {linedUpCnt} lined up</div>
+        </div>
+        <div className="t-mast-r">
+          {hasFilters && (
+            <button className="t-btn t-btn-sm" style={{background:"var(--yellow)",color:"var(--black)",border:"none"}} onClick={clearFilters}>
+              Clear Filters ×
+            </button>
+          )}
+          <button className="t-btn t-btn-outline" style={{color:"var(--black)",borderColor:"var(--black)"}} onClick={() => setAdding(true)}>
+            + Add Entry
+          </button>
+        </div>
+      </div>
+
+      {/* KPI strip */}
+      <div className="t-kpis" style={{gridTemplateColumns:"repeat(3,1fr)"}}>
+        {[
+          {label:"Total Entries",  value:totalRows,    color:"#0066b3"},
+          {label:"Connected",      value:connectedCnt, color:"#009149"},
+          {label:"Lined Up",       value:linedUpCnt,   color:"#5b21b6"},
+        ].map(k => (
+          <div key={k.label} className="t-kpi">
+            <div className="t-kpi-accent" style={{background:k.color}}/>
+            <div className="t-kpi-label">{k.label}</div>
+            <div className="t-kpi-value">{k.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {flashMsg && (
+        <div style={{padding:"8px 20px",background:"#f0fff7",borderBottom:"1px solid #6ee7b7"}}>
+          <Alert type="success">{flashMsg}</Alert>
+        </div>
+      )}
+
+      <div style={{background:"var(--white)"}}>
+        {loading && <div style={{padding:60,textAlign:"center"}}><Spin/></div>}
+        {!loading && rows.length === 0 && (
+          <div className="t-empty">
+            No entries yet.<br/>
+            <button className="t-btn t-btn-black" style={{marginTop:16}} onClick={() => setAdding(true)}>+ Add First Entry</button>
+          </div>
+        )}
+        {!loading && rows.length > 0 && filtered.length === 0 && (
+          <div className="t-empty">No entries match the current filters. <button className="t-btn t-btn-outline t-btn-sm" style={{marginLeft:8}} onClick={clearFilters}>Clear filters</button></div>
+        )}
+        {!loading && filtered.length > 0 && (
+          <div className="t-tbl-wrap">
+            <table className="t-tbl">
+              <thead>
+                <tr>
+                  {shownCols.map(h => (
+                    <th key={h} style={h === "Remarks" ? {minWidth:160} : h === "Call Status" ? {minWidth:140} : {}}>{h}</th>
+                  ))}
+                </tr>
+                <tr className="filter-row">
+                  {shownCols.map(h => (
+                    <td key={h} style={{padding:"2px 3px"}}>
+                      <ExcelColFilter
+                        header={h}
+                        values={colValues[h] || []}
+                        selected={filters[h] || null}
+                        onChange={v => setColFilter(h, v)}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((row, i) => (
+                  <tr key={i}>
+                    {shownCols.map(h => (
+                      <td key={h} style={h === "Remarks" ? {minWidth:160} : h === "Call Status" ? {minWidth:140} : {}}>
+                        {renderCell(h, row[h], row)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {adding && (
+        <AddManualEntryModal
+          user={user}
+          onClose={() => setAdding(false)}
+          onSaved={() => {
+            setAdding(false);
+            setFlashMsg("Entry added successfully!");
+            setTimeout(() => setFlashMsg(""), 3500);
+            refresh();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function AddManualEntryModal({ user, onClose, onSaved }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [form, setForm] = useState({
+    date: today, candidateName: "", contactNumber: "",
+    location: "", client: "", role: "", source: "",
+  });
+  const [busy, setBusy] = useState(false);
+  const [err,  setErr]  = useState("");
+
+  function field(key, label, required, opts) {
+    if (opts === "text" || !opts) {
+      return (
+        <div>
+          <label className="t-label">{label}{required && <span style={{color:"var(--red)"}}> *</span>}</label>
+          <input
+            className="t-input"
+            value={form[key]}
+            onChange={e => setForm({...form, [key]: e.target.value})}
+            placeholder={opts === "text" ? "" : label}
+          />
+        </div>
+      );
+    }
+  }
+
+  async function submit() {
+    if (!form.candidateName.trim()) return setErr("Candidate name is required.");
+    if (!form.contactNumber.trim())  return setErr("Contact number is required.");
+    setBusy(true); setErr("");
+    const r = await api("addManualEntry", { entry: form });
+    setBusy(false);
+    if (!r.ok) return setErr(r.message || r.error);
+    onSaved(r.uniqueId);
+  }
+
+  return (
+    <div className="t-modal-bg" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="t-modal t-fade" style={{maxWidth:540}}>
+        <div className="t-modal-hd">
+          <span>Add Manual Entry</span>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:18,lineHeight:1}}>×</button>
+        </div>
+        <div className="t-modal-body" style={{display:"flex",flexDirection:"column",gap:12}}>
+
+          {/* Row 1: Name + Phone */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div>
+              <label className="t-label">Candidate Name <span style={{color:"var(--red)"}}>*</span></label>
+              <input className="t-input" autoFocus value={form.candidateName} onChange={e=>setForm({...form,candidateName:e.target.value})} placeholder="Full name"/>
+            </div>
+            <div>
+              <label className="t-label">Contact Number <span style={{color:"var(--red)"}}>*</span></label>
+              <input className="t-input" value={form.contactNumber} onChange={e=>setForm({...form,contactNumber:e.target.value})} placeholder="10-digit mobile"/>
+            </div>
+          </div>
+
+          {/* Row 2: Date + Source */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div>
+              <label className="t-label">Date</label>
+              <input className="t-input" type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/>
+            </div>
+            <div>
+              <label className="t-label">Source</label>
+              <select className="t-select" style={{width:"100%"}} value={form.source} onChange={e=>setForm({...form,source:e.target.value})}>
+                <option value="">— select —</option>
+                {MT_SOURCE_OPTIONS.map(s=><option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Row 3: Client + Role */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div>
+              <label className="t-label">Client</label>
+              <input className="t-input" value={form.client} onChange={e=>setForm({...form,client:e.target.value})} placeholder="e.g. HDFC Bank"/>
+            </div>
+            <div>
+              <label className="t-label">Role</label>
+              <input className="t-input" value={form.role} onChange={e=>setForm({...form,role:e.target.value})} placeholder="e.g. Field Sales Officer"/>
+            </div>
+          </div>
+
+          {/* Row 4: Location */}
+          <div>
+            <label className="t-label">Location</label>
+            <input className="t-input" value={form.location} onChange={e=>setForm({...form,location:e.target.value})} placeholder="City / Area"/>
+          </div>
+
+          {/* Auto-filled info note */}
+          <div style={{padding:"8px 10px",background:"#f5f5f5",border:"1px solid var(--border)",fontSize:10,color:"var(--muted)",fontFamily:"var(--fm)"}}>
+            Auto-filled: Added By → <b>{user.name||user.email}</b> · Team → <b>{user.team||"—"}</b> · Call Status &amp; Remarks set inline after adding.
+          </div>
+
+          {err && <Alert type="error">{err}</Alert>}
+        </div>
+        <div className="t-modal-footer">
+          <button onClick={onClose} className="t-btn t-btn-outline">Cancel</button>
+          <button onClick={submit} disabled={busy} className="t-btn t-btn-black">
+            {busy ? <Spin white/> : "Add Entry"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────
 // AGENT INTEL VIEW (super admin only)
