@@ -570,7 +570,24 @@ function StatusSelect({ options, value, onChange }) {
 
 const CALL_STATUS_OPTIONS = ["Connected","DNP-1","DNP-2","DNP-3","DNP-4","DNP-5","Hiring On hold","Irrelevant"];
 const TURNUP_OPTIONS = ["Interview Scheduled","Interview Completed","No Show / Not Interested Now","Rejected (After Interview)","Selected / Offer in Process","Backout (Post Offer)"];
-const FEEDBACK_OPTIONS = ["Duplicate / R1 Reject / DNP","Not interested / Not looking for job change","Location issue / Looking for specific city","Out of budget / High salary expectation","Low experience / Fresher","Overaged / Not eligible","Previously Evaluated","Communication gap","Not working currently / Career gap","Currently working – not open to move","Wrong number / Not connected","Other constraint","Relevant but looking for senior role","Not reachable / Call back later","Call back scheduled","CV Awaited / Shared","Interested: Interview Lined up","Interview: Done","Already in process / Selected","Currently Working in same company"];
+const FEEDBACK_OPTIONS = [
+  "Duplicate / Already Processed / Previously Evaluated / R1 Reject",
+  "Not Interested / Not looking for job change",
+  "Location Mismatch",
+  "High Salary Expectation / Out of budget",
+  "Age Issue / Overaged",
+  "Experience Mismatch / Low experience / Fresher",
+  "Communication Gap",
+  "Career Gap / Not working currently",
+  "Relevant but looking for senior role",
+  "Wrong Number / Invalid / Not connected",
+  "Call Back Scheduled",
+  "CV Awaited",
+  "Interested – Interview Lined Up",
+  "Already in process / Selected",
+  "Currently working in same company",
+  "Other Constraint",
+];
 const SELECTION_OPTIONS = ["FB Pending","Backout","Offer Backout","Duplicate","Process","Reject","TL Reject","Position on hold","Position Closed","Interview Reject","Telephonic","VC","F2F","Finals","Use Later","On Hold","Offered","Joined","Drop"];
 
 const NAV_ITEMS = [
@@ -1188,7 +1205,7 @@ function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
 
           <div className="t-tbl-wrap">
             <table className="t-tbl">
-              <thead><tr><th>Name</th><th>Team</th><th>Calls</th><th>QL</th><th>Connected</th><th>Lined Up</th><th>CV Awaited</th><th style={{color:"var(--red)"}}>Empty Status</th></tr></thead><thead><tr><th>Name</th><th>Team</th><th>Calls</th><th>QL</th><th>Connected</th><th>Lined Up</th><th>CV Awaited</th><th style={{color:"var(--red)"}}>Empty Status</th></tr></thead>
+              <thead><tr><th>Name</th><th>Team</th><th>Calls</th><th>QL</th><th>Connected</th><th>Lined Up</th><th>CV Awaited</th><th style={{color:"var(--red)"}}>Empty Status</th></tr></thead>
               <tbody>
                 {userList.filter(u=>!peopleTeamFilter||u.team===peopleTeamFilter).map((u,i)=>(
                   <tr key={i}>
@@ -1404,6 +1421,7 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
   const [bulkBusy, setBulkBusy] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
   const [selTeam, setSelTeam] = useState("");
+  const [tab, setTab] = useState("active");
 
   const teamFilterEmails = useMemo(() => {
     if (!selTeam) return null;
@@ -1431,13 +1449,37 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
     return ()=>clearInterval(t);
   },[selAgent, search, unassignedOnly, reqFilter]);
 
-  const fixedCols = ["Callee Name","Mobile Number","Started At","Assigned To Email","Call Status","Feedback","Selection Process","Turnup Status","Remarks","Recording URL"];
+  const fixedCols = ["Callee Name","Mobile Number","Started At","Assigned To Email","Call Status","Feedback","Remarks","Recording URL"];
   const dateCols = headers.filter(h => isDateCol(h) && !fixedCols.includes(h));
   const outCols = headers.filter(h=>h.startsWith("out."));
   const inCols = headers.filter(h=>h.startsWith("in."));
   const shownHeaders = [...fixedCols.filter(h=>headers.includes(h)), ...dateCols, ...outCols, ...inCols];
 
-  const { filters, filtered: rawFiltered, colValues, setColFilter, clearFilters } = useTableFilters(leads, shownHeaders);
+  // ── Tab filter: Active vs Completed
+  // Active: empty Call Status, OR DNP-1/DNP-2, OR Connected+callback feedback
+  // Completed: Connected/Irrelevant + filled Feedback, OR Hiring On hold, OR DNP-3/4/5
+  const tabFilteredLeads = useMemo(() => {
+    const CALLBACK_HINTS = ["call back","callback","call back scheduled"];
+    function isCompleted(l) {
+      const cs = String(l["Call Status"]||"").trim();
+      const fb = String(l["Feedback"]||"").trim();
+      if (cs === "Hiring On hold") return true;
+      if (cs === "DNP-3" || cs === "DNP-4" || cs === "DNP-5") return true;
+      if ((cs === "Connected" || cs === "Irrelevant") && fb !== "") return true;
+      return false;
+    }
+    function isActive(l) {
+      const cs = String(l["Call Status"]||"").trim();
+      const fb = String(l["Feedback"]||"").toLowerCase().trim();
+      if (!cs) return true;
+      if (cs === "DNP-1" || cs === "DNP-2") return true;
+      if (cs === "Connected" && CALLBACK_HINTS.some(k => fb.includes(k))) return true;
+      return false;
+    }
+    return leads.filter(l => tab === "completed" ? isCompleted(l) : isActive(l));
+  }, [leads, tab]);
+
+  const { filters, filtered: rawFiltered, colValues, setColFilter, clearFilters } = useTableFilters(tabFilteredLeads, shownHeaders);
   const hasFilters = Object.keys(filters).length > 0;
 
   const filteredLeads = useMemo(() => {
@@ -1450,6 +1492,30 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
     }
     return result;
   }, [rawFiltered, teamFilterEmails]);
+
+  // Counts shown in the tab strip — independent of column filters
+  // so users always know how many leads exist in each tab.
+ const tabCounts = useMemo(() => {
+    const CALLBACK_HINTS = ["call back","callback","call back scheduled"];
+    let baseLeads = leads;
+    if (teamFilterEmails) {
+      baseLeads = baseLeads.filter(l => {
+        const ae = String(l["Assigned To Email"]||"").toLowerCase();
+        return !ae || teamFilterEmails.has(ae);
+      });
+    }
+    let active = 0, completed = 0;
+    baseLeads.forEach(l => {
+      const cs = String(l["Call Status"]||"").trim();
+      const fb = String(l["Feedback"]||"").trim();
+      const fbLower = fb.toLowerCase();
+      if (cs === "Hiring On hold" || cs === "DNP-3" || cs === "DNP-4" || cs === "DNP-5") { completed++; return; }
+      if ((cs === "Connected" || cs === "Irrelevant") && fb !== "") { completed++; return; }
+      if (!cs || cs === "DNP-1" || cs === "DNP-2") { active++; return; }
+      if (cs === "Connected" && CALLBACK_HINTS.some(k => fbLower.includes(k))) { active++; return; }
+    });
+    return { active, completed };
+  }, [leads, teamFilterEmails]);
 
   const canBulkAssign = user.role!=="recruiter";
   const [recruiters, setRecruiters] = useState([]);
@@ -1522,6 +1588,16 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
               <span style={{fontFamily:"var(--fm)",fontSize:10,background:"rgba(255,255,255,.1)",padding:"1px 5px"}}>campaign: {reqFilter.slice(-12)}</span>
               <button onClick={()=>{setReqFilter("");onClearFilter&&onClearFilter();}} style={{background:"rgba(255,255,255,.15)",border:"none",color:"rgba(255,255,255,.8)",fontSize:9,cursor:"pointer",padding:"1px 6px",fontFamily:"var(--fd)",fontWeight:700,letterSpacing:".1em"}}>CLEAR ×</button>
             </>}
+          </div>
+          <div style={{display:"flex",gap:0,marginTop:10}}>
+            <button
+              onClick={()=>{setTab("active");setSelected(new Set());}}
+              style={{padding:"6px 16px",fontSize:11,fontFamily:"var(--fd)",fontWeight:700,letterSpacing:".1em",textTransform:"uppercase",cursor:"pointer",border:"1px solid rgba(255,255,255,.25)",borderRight:"none",background:tab==="active"?"#ffffff":"transparent",color:tab==="active"?"var(--black)":"rgba(255,255,255,.7)"}}
+            >Active <span style={{opacity:.6,marginLeft:4}}>{tabCounts.active}</span></button>
+            <button
+              onClick={()=>{setTab("completed");setSelected(new Set());}}
+              style={{padding:"6px 16px",fontSize:11,fontFamily:"var(--fd)",fontWeight:700,letterSpacing:".1em",textTransform:"uppercase",cursor:"pointer",border:"1px solid rgba(255,255,255,.25)",background:tab==="completed"?"#ffffff":"transparent",color:tab==="completed"?"var(--black)":"rgba(255,255,255,.7)"}}
+            >Completed <span style={{opacity:.6,marginLeft:4}}>{tabCounts.completed}</span></button>
           </div>
         </div>
         <div className="t-mast-r">
