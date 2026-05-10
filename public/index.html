@@ -3218,301 +3218,7 @@ function App() {
     </>
   );
 }
-// ─────────────────────────────────────────────────────────────
-// MANUAL TRACKER VIEW
-// ─────────────────────────────────────────────────────────────
 
-const MT_CALL_STATUS_OPTIONS = [
-  "Connected","DNP-1","DNP-2","DNP-3","DNP-4","DNP-5",
-  "Not Interested","Call Back","Hiring On Hold","Irrelevant",
-];
-const MT_LINED_UP_OPTIONS = ["Yes","No","Pending"];
-const MT_SOURCE_OPTIONS   = ["LinkedIn","Referral","Walk-in","Job Portal","WhatsApp","Cold Call","Database","Other"];
-
-function ManualTrackerView({ user }) {
-  const [rows,    setRows]    = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [adding,  setAdding]  = useState(false);
-  const [flashMsg,setFlashMsg]= useState("");
-
-  async function refresh() {
-    setLoading(true);
-    const r = await api("getManualTracker", {});
-    setLoading(false);
-    if (r.ok) setRows(r.rows || []);
-  }
-  useEffect(() => { refresh(); }, []);
-
-  async function handleCellChange(uniqueId, field, value) {
-    // Optimistic update
-    setRows(prev => prev.map(r =>
-      String(r["Unique ID"]) === uniqueId ? {...r, [field]: value} : r
-    ));
-    const res = await api("updateManualEntry", { uniqueId, fields: { [field]: value } });
-    if (!res.ok) { refresh(); } // revert on failure
-  }
-
-  // Columns visible in the table
-  const shownCols = [
-    "Date","Candidate Name","Contact Number","Location",
-    "Client","Role","Source",
-    "Call Status","Lined-up","Remarks",
-    "Added By Name","Team",
-  ];
-
-  const { filters, filtered, colValues, setColFilter, clearFilters } = useTableFilters(rows, shownCols);
-  const hasFilters = Object.keys(filters).length > 0;
-
-  function canEdit(row) {
-    const owner = String(row["Added By Email"] || "").toLowerCase();
-    return owner === user.email.toLowerCase()
-      || user.role === "team_lead"
-      || user.role === "individual_contributor"
-      || user.role === "super_admin";
-  }
-
-  function renderCell(col, val, row) {
-    const uid    = String(row["Unique ID"] || "");
-    const strVal = String(val ?? "") || "";
-    const editable = canEdit(row);
-
-    if (col === "Call Status") {
-      if (editable) return <StatusSelect options={MT_CALL_STATUS_OPTIONS} value={strVal} onChange={v => handleCellChange(uid, "Call Status", v)}/>;
-      return <LeadPill value={strVal}/>;
-    }
-    if (col === "Lined-up") {
-      if (editable) return <StatusSelect options={MT_LINED_UP_OPTIONS} value={strVal} onChange={v => handleCellChange(uid, "Lined-up", v)}/>;
-      return strVal ? <LeadPill value={strVal}/> : <span style={{color:"#ccc"}}>—</span>;
-    }
-    if (col === "Remarks") {
-      return <RemarksCell
-        name={String(row["Candidate Name"] || "")}
-        value={strVal}
-        onSave={editable ? v => handleCellChange(uid, "Remarks", v) : undefined}
-        readOnly={!editable}
-      />;
-    }
-    if (col === "Date") return <DateCell value={strVal}/>;
-    if (!strVal) return <span style={{color:"#ccc"}}>—</span>;
-    if (col === "Contact Number") return <span className="t-mono">{strVal}</span>;
-    return <span style={{fontSize:12}}>{strVal}</span>;
-  }
-
-  const totalRows    = rows.length;
-  const connectedCnt = rows.filter(r => String(r["Call Status"]||"").toLowerCase().includes("connected")).length;
-  const linedUpCnt   = rows.filter(r => String(r["Lined-up"]||"").toLowerCase() === "yes").length;
-
-  return (
-    <div className="t-fade">
-      <div className="t-mast">
-        <div>
-          <div className="t-mast-title">Manual Tracker</div>
-          <div className="t-mast-sub">{totalRows} entries · {connectedCnt} connected · {linedUpCnt} lined up</div>
-        </div>
-        <div className="t-mast-r">
-          {hasFilters && (
-            <button className="t-btn t-btn-sm" style={{background:"var(--yellow)",color:"var(--black)",border:"none"}} onClick={clearFilters}>
-              Clear Filters ×
-            </button>
-          )}
-          <button className="t-btn t-btn-outline" style={{color:"var(--black)",borderColor:"var(--black)"}} onClick={() => setAdding(true)}>
-            + Add Entry
-          </button>
-        </div>
-      </div>
-
-      {/* KPI strip */}
-      <div className="t-kpis" style={{gridTemplateColumns:"repeat(3,1fr)"}}>
-        {[
-          {label:"Total Entries",  value:totalRows,    color:"#0066b3"},
-          {label:"Connected",      value:connectedCnt, color:"#009149"},
-          {label:"Lined Up",       value:linedUpCnt,   color:"#5b21b6"},
-        ].map(k => (
-          <div key={k.label} className="t-kpi">
-            <div className="t-kpi-accent" style={{background:k.color}}/>
-            <div className="t-kpi-label">{k.label}</div>
-            <div className="t-kpi-value">{k.value}</div>
-          </div>
-        ))}
-      </div>
-
-      {flashMsg && (
-        <div style={{padding:"8px 20px",background:"#f0fff7",borderBottom:"1px solid #6ee7b7"}}>
-          <Alert type="success">{flashMsg}</Alert>
-        </div>
-      )}
-
-      <div style={{background:"var(--white)"}}>
-        {loading && <div style={{padding:60,textAlign:"center"}}><Spin/></div>}
-        {!loading && rows.length === 0 && (
-          <div className="t-empty">
-            No entries yet.<br/>
-            <button className="t-btn t-btn-black" style={{marginTop:16}} onClick={() => setAdding(true)}>+ Add First Entry</button>
-          </div>
-        )}
-        {!loading && rows.length > 0 && filtered.length === 0 && (
-          <div className="t-empty">No entries match the current filters. <button className="t-btn t-btn-outline t-btn-sm" style={{marginLeft:8}} onClick={clearFilters}>Clear filters</button></div>
-        )}
-        {!loading && filtered.length > 0 && (
-          <div className="t-tbl-wrap">
-            <table className="t-tbl">
-              <thead>
-                <tr>
-                  {shownCols.map(h => (
-                    <th key={h} style={h === "Remarks" ? {minWidth:160} : h === "Call Status" ? {minWidth:140} : {}}>{h}</th>
-                  ))}
-                </tr>
-                <tr className="filter-row">
-                  {shownCols.map(h => (
-                    <td key={h} style={{padding:"2px 3px"}}>
-                      <ExcelColFilter
-                        header={h}
-                        values={colValues[h] || []}
-                        selected={filters[h] || null}
-                        onChange={v => setColFilter(h, v)}
-                      />
-                    </td>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row, i) => (
-                  <tr key={i}>
-                    {shownCols.map(h => (
-                      <td key={h} style={h === "Remarks" ? {minWidth:160} : h === "Call Status" ? {minWidth:140} : {}}>
-                        {renderCell(h, row[h], row)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {adding && (
-        <AddManualEntryModal
-          user={user}
-          onClose={() => setAdding(false)}
-          onSaved={() => {
-            setAdding(false);
-            setFlashMsg("Entry added successfully!");
-            setTimeout(() => setFlashMsg(""), 3500);
-            refresh();
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-function AddManualEntryModal({ user, onClose, onSaved }) {
-  const today = new Date().toISOString().slice(0, 10);
-  const [form, setForm] = useState({
-    date: today, candidateName: "", contactNumber: "",
-    location: "", client: "", role: "", source: "",
-  });
-  const [busy, setBusy] = useState(false);
-  const [err,  setErr]  = useState("");
-
-  function field(key, label, required, opts) {
-    if (opts === "text" || !opts) {
-      return (
-        <div>
-          <label className="t-label">{label}{required && <span style={{color:"var(--red)"}}> *</span>}</label>
-          <input
-            className="t-input"
-            value={form[key]}
-            onChange={e => setForm({...form, [key]: e.target.value})}
-            placeholder={opts === "text" ? "" : label}
-          />
-        </div>
-      );
-    }
-  }
-
-  async function submit() {
-    if (!form.candidateName.trim()) return setErr("Candidate name is required.");
-    if (!form.contactNumber.trim())  return setErr("Contact number is required.");
-    setBusy(true); setErr("");
-    const r = await api("addManualEntry", { entry: form });
-    setBusy(false);
-    if (!r.ok) return setErr(r.message || r.error);
-    onSaved(r.uniqueId);
-  }
-
-  return (
-    <div className="t-modal-bg" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="t-modal t-fade" style={{maxWidth:540}}>
-        <div className="t-modal-hd">
-          <span>Add Manual Entry</span>
-          <button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:18,lineHeight:1}}>×</button>
-        </div>
-        <div className="t-modal-body" style={{display:"flex",flexDirection:"column",gap:12}}>
-
-          {/* Row 1: Name + Phone */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            <div>
-              <label className="t-label">Candidate Name <span style={{color:"var(--red)"}}>*</span></label>
-              <input className="t-input" autoFocus value={form.candidateName} onChange={e=>setForm({...form,candidateName:e.target.value})} placeholder="Full name"/>
-            </div>
-            <div>
-              <label className="t-label">Contact Number <span style={{color:"var(--red)"}}>*</span></label>
-              <input className="t-input" value={form.contactNumber} onChange={e=>setForm({...form,contactNumber:e.target.value})} placeholder="10-digit mobile"/>
-            </div>
-          </div>
-
-          {/* Row 2: Date + Source */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            <div>
-              <label className="t-label">Date</label>
-              <input className="t-input" type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/>
-            </div>
-            <div>
-              <label className="t-label">Source</label>
-              <select className="t-select" style={{width:"100%"}} value={form.source} onChange={e=>setForm({...form,source:e.target.value})}>
-                <option value="">— select —</option>
-                {MT_SOURCE_OPTIONS.map(s=><option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-          </div>
-
-          {/* Row 3: Client + Role */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            <div>
-              <label className="t-label">Client</label>
-              <input className="t-input" value={form.client} onChange={e=>setForm({...form,client:e.target.value})} placeholder="e.g. HDFC Bank"/>
-            </div>
-            <div>
-              <label className="t-label">Role</label>
-              <input className="t-input" value={form.role} onChange={e=>setForm({...form,role:e.target.value})} placeholder="e.g. Field Sales Officer"/>
-            </div>
-          </div>
-
-          {/* Row 4: Location */}
-          <div>
-            <label className="t-label">Location</label>
-            <input className="t-input" value={form.location} onChange={e=>setForm({...form,location:e.target.value})} placeholder="City / Area"/>
-          </div>
-
-          {/* Auto-filled info note */}
-          <div style={{padding:"8px 10px",background:"#f5f5f5",border:"1px solid var(--border)",fontSize:10,color:"var(--muted)",fontFamily:"var(--fm)"}}>
-            Auto-filled: Added By → <b>{user.name||user.email}</b> · Team → <b>{user.team||"—"}</b> · Call Status &amp; Remarks set inline after adding.
-          </div>
-
-          {err && <Alert type="error">{err}</Alert>}
-        </div>
-        <div className="t-modal-footer">
-          <button onClick={onClose} className="t-btn t-btn-outline">Cancel</button>
-          <button onClick={submit} disabled={busy} className="t-btn t-btn-black">
-            {busy ? <Spin white/> : "Add Entry"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ─────────────────────────────────────────────────────────────
 // AGENT INTEL VIEW (super admin only)
@@ -3925,6 +3631,312 @@ function SetupView() {
       ]
     },
   ];
+
+  // ─────────────────────────────────────────────────────────────
+// MANUAL TRACKER — Excel-style inline grid
+// ─────────────────────────────────────────────────────────────
+
+const MT_STATUS_OPTS = ["Connected","DNP-1","DNP-2","DNP-3","DNP-4","DNP-5","Not Interested","Call Back","Hiring On Hold","Irrelevant"];
+const MT_LINED_OPTS  = ["Yes","No","Pending"];
+const MT_SOURCE_OPTS = ["LinkedIn","Referral","Walk-in","Job Portal","WhatsApp","Cold Call","Database","Other"];
+
+const MT_COLS = [
+  { key:"date",       label:"Date",          w:86,   type:"date" },
+  { key:"name",       label:"Candidate Name",w:155              },
+  { key:"phone",      label:"Contact",       w:115,  mono:true  },
+  { key:"client",     label:"Client",        w:90               },
+  { key:"role",       label:"Role",          w:100              },
+  { key:"source",     label:"Source",        w:90               },
+  { key:"callStatus", label:"Call Status",   w:130,  type:"select", opts:MT_STATUS_OPTS },
+  { key:"linedUp",    label:"Lined Up",      w:86,   type:"select", opts:MT_LINED_OPTS  },
+  { key:"remarks",    label:"Remarks",       w:"auto"           },
+];
+
+function _mtEmpty() {
+  return {
+    _id:    Math.random().toString(36).slice(2),
+    uid:    "",
+    date:   new Date().toISOString().slice(0,10),
+    name:"", phone:"", client:"", role:"", source:"",
+    callStatus:"", linedUp:"", remarks:"",
+    _saved:false, _dirty:false,
+  };
+}
+function _mtFromServer(r) {
+  let ds="";
+  try { if(r["Date"]) ds=new Date(r["Date"]).toISOString().slice(0,10); } catch(_){}
+  return {
+    _id:        r["Unique ID"]||Math.random().toString(36).slice(2),
+    uid:        r["Unique ID"]||"",
+    date:       ds,
+    name:       String(r["Candidate Name"]||""),
+    phone:      String(r["Contact Number"] ||""),
+    client:     String(r["Client"]         ||""),
+    role:       String(r["Role"]           ||""),
+    source:     String(r["Source"]         ||""),
+    callStatus: String(r["Call Status"]    ||""),
+    linedUp:    String(r["Lined-up"]       ||""),
+    remarks:    String(r["Remarks"]        ||""),
+    _saved:true, _dirty:false,
+  };
+}
+
+function ManualTrackerView({ user }) {
+  const [saved,   setSaved]   = useState([]);
+  const [empties, setEmpties] = useState(()=>Array.from({length:5},_mtEmpty));
+  const [loading, setLoading] = useState(true);
+  const [timeFil, setTimeFil] = useState("7d");
+  const [saveState, setSaveState] = useState({});
+
+  async function load() {
+    setLoading(true);
+    const r = await api("getManualTracker",{});
+    setLoading(false);
+    if (r.ok) setSaved((r.rows||[]).map(_mtFromServer));
+  }
+  useEffect(()=>{ load(); },[]);
+
+  function patchSaved(uid, key, val) {
+    setSaved(prev=>prev.map(r=>r.uid===uid?{...r,[key]:val,_dirty:true}:r));
+  }
+  function patchEmpty(id, key, val) {
+    setEmpties(prev=>prev.map(r=>r._id===id?{...r,[key]:val}:r));
+  }
+
+  function _setSS(sid, state) {
+    setSaveState(p=>({...p,[sid]:state}));
+    if (state==="ok") setTimeout(()=>setSaveState(p=>{const n={...p};delete n[sid];return n;}),1500);
+  }
+
+  async function flushEmpty(id) {
+    const row = empties.find(r=>r._id===id);
+    if (!row||!row.name.trim()||!row.phone.trim()) return;
+    _setSS(id,"saving");
+    const res = await api("addManualEntry",{entry:{
+      date:row.date, candidateName:row.name, contactNumber:row.phone,
+      client:row.client, role:row.role, source:row.source, location:"",
+    }});
+    if (res.ok) {
+      if (row.callStatus||row.linedUp||row.remarks) {
+        await api("updateManualEntry",{uniqueId:res.uniqueId,fields:{"Call Status":row.callStatus,"Lined-up":row.linedUp,"Remarks":row.remarks}});
+      }
+      setSaved(prev=>[...prev,{...row,uid:res.uniqueId,_id:res.uniqueId,_saved:true,_dirty:false}]);
+      setEmpties(prev=>prev.filter(r=>r._id!==id));
+      _setSS(id,"ok");
+    } else {
+      _setSS(id,null);
+    }
+  }
+
+  async function flushSaved(uid) {
+    const row = saved.find(r=>r.uid===uid);
+    if (!row||!row._dirty) return;
+    _setSS(uid,"saving");
+    await api("updateManualEntry",{uniqueId:uid,fields:{
+      "Candidate Name":row.name, "Contact Number":row.phone,
+      "Client":row.client, "Role":row.role, "Source":row.source,
+      "Call Status":row.callStatus, "Lined-up":row.linedUp, "Remarks":row.remarks,
+    }});
+    setSaved(prev=>prev.map(r=>r.uid===uid?{...r,_dirty:false}:r));
+    _setSS(uid,"ok");
+  }
+
+  function addMoreRows(n=10) {
+    setEmpties(prev=>[...prev,...Array.from({length:n},_mtEmpty)]);
+  }
+
+  function onKeyDown(e, localId, isSavedRow) {
+    if (e.key!=="Enter") return;
+    e.preventDefault();
+    const allRows = document.querySelectorAll("tr[data-mtrow]");
+    const cur = e.target.closest("tr");
+    const arr = Array.from(allRows);
+    const idx = arr.indexOf(cur);
+    if (idx>=0 && idx<arr.length-1) {
+      const next = arr[idx+1].querySelector("input,select");
+      if (next) next.focus();
+    }
+  }
+
+  // Count rows per tab for badges
+  function countFor(days) {
+    const cutoff = new Date();
+    if (days===0) cutoff.setHours(0,0,0,0);
+    else { cutoff.setDate(cutoff.getDate()-days); cutoff.setHours(0,0,0,0); }
+    return saved.filter(r=>{ try{return new Date(r.date)>=cutoff;}catch{return false;} }).length;
+  }
+
+  const filteredSaved = useMemo(()=>{
+    if (timeFil==="all") return saved;
+    const cutoff = new Date();
+    if (timeFil==="today") cutoff.setHours(0,0,0,0);
+    else { cutoff.setDate(cutoff.getDate()-(timeFil==="7d"?7:30)); cutoff.setHours(0,0,0,0); }
+    return saved.filter(r=>{ try{return new Date(r.date)>=cutoff;}catch{return false;} });
+  },[saved,timeFil]);
+
+  const displayRows = [...filteredSaved,...empties];
+  const totalSaved  = saved.length;
+  const connCount   = saved.filter(r=>String(r.callStatus).toLowerCase().includes("connected")).length;
+  const lineupCount = saved.filter(r=>String(r.linedUp).toLowerCase()==="yes").length;
+
+  const thSt = {
+    padding:"6px 8px", fontSize:9, fontWeight:700, fontFamily:"var(--fd)",
+    letterSpacing:".18em", textTransform:"uppercase", color:"var(--muted)",
+    borderBottom:"2px solid var(--black)", background:"var(--white)",
+    textAlign:"left", whiteSpace:"nowrap", position:"sticky", top:0, zIndex:2,
+  };
+  const cellInp = {
+    width:"100%", height:30, border:"none", background:"transparent",
+    fontSize:12, fontFamily:"var(--fb)", color:"var(--black)",
+    padding:"4px 8px", outline:"none", display:"block",
+  };
+  const cellSel = {
+    width:"100%", height:30, border:"none", background:"transparent",
+    fontSize:11, fontFamily:"var(--fb)", color:"var(--black)",
+    padding:"2px 6px", outline:"none", cursor:"pointer",
+  };
+
+  const TIME_TABS = [
+    {id:"today",label:"Today",     count:countFor(0)  },
+    {id:"7d",   label:"Last 7 days",count:countFor(7) },
+    {id:"30d",  label:"Last 30 days",count:countFor(30)},
+    {id:"all",  label:"All time",  count:totalSaved   },
+  ];
+
+  if (loading) return (
+    <div className="t-fade">
+      <div className="t-mast"><div><div className="t-mast-title">Manual Tracker</div><div className="t-mast-sub">Loading…</div></div></div>
+      <div style={{padding:60,textAlign:"center"}}><Spin/></div>
+    </div>
+  );
+
+  return (
+    <div className="t-fade" style={{display:"flex",flexDirection:"column",minHeight:"calc(100vh - 48px)"}}>
+      <div className="t-mast">
+        <div>
+          <div className="t-mast-title">Manual Tracker</div>
+          <div className="t-mast-sub">{totalSaved} entries · {connCount} connected · {lineupCount} lined up</div>
+        </div>
+      </div>
+
+      {/* KPI strip */}
+      <div className="t-kpis" style={{gridTemplateColumns:"repeat(3,1fr)"}}>
+        {[
+          {label:"Total Entries",value:totalSaved,  color:"#0066b3"},
+          {label:"Connected",    value:connCount,   color:"#009149"},
+          {label:"Lined Up",     value:lineupCount, color:"#5b21b6"},
+        ].map(k=>(
+          <div key={k.label} className="t-kpi">
+            <div className="t-kpi-accent" style={{background:k.color}}/>
+            <div className="t-kpi-label">{k.label}</div>
+            <div className="t-kpi-value">{k.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Time tabs */}
+      <div className="t-tabs">
+        {TIME_TABS.map(t=>(
+          <div key={t.id} className={"t-tab"+(timeFil===t.id?" active":"")} onClick={()=>setTimeFil(t.id)}>
+            {t.label}
+            <span style={{fontSize:9,marginLeft:5,opacity:.55,fontFamily:"var(--fm)"}}>{t.count}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Excel grid */}
+      <div style={{flex:1,background:"var(--white)",overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",tableLayout:"fixed",minWidth:940}}>
+          <colgroup>
+            <col style={{width:32}}/>
+            {MT_COLS.map(c=><col key={c.key} style={{width:typeof c.w==="number"?c.w+"px":"auto"}}/>)}
+            <col style={{width:34}}/>
+          </colgroup>
+          <thead>
+            <tr>
+              <th style={{...thSt,width:32,textAlign:"center"}}>#</th>
+              {MT_COLS.map(c=><th key={c.key} style={thSt}>{c.label}</th>)}
+              <th style={thSt}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {displayRows.map((row,idx)=>{
+              const isSaved = !!row.uid;
+              const sid = row.uid||row._id;
+              const ss  = saveState[sid];
+              const isDirty = row._dirty;
+              const hasData = !isSaved&&(row.name||row.phone);
+              const rowBg = isDirty?"#fffde7":hasData?"#f0f7ff":"transparent";
+              const onBlur = ()=>{ if(isSaved)flushSaved(row.uid); else flushEmpty(row._id); };
+              const onChange = (key,val)=>{ if(isSaved)patchSaved(row.uid,key,val); else patchEmpty(row._id,key,val); };
+
+              return (
+                <tr key={sid} data-mtrow="1" style={{background:rowBg}}>
+                  <td style={{textAlign:"center",fontSize:9,fontFamily:"var(--fm)",color:"var(--muted)",padding:"2px 0",borderBottom:"1px solid #eee",borderRight:"1px solid #f0f0f0",background:"#fafafa"}}>
+                    {idx+1}
+                  </td>
+                  {MT_COLS.map(col=>{
+                    const val = row[col.key]||"";
+                    return (
+                      <td key={col.key} style={{padding:0,borderBottom:"1px solid #eee",borderRight:"1px solid #f5f5f5",height:30}}>
+                        {col.type==="select"?(
+                          <select
+                            value={val}
+                            onChange={e=>onChange(col.key,e.target.value)}
+                            onBlur={onBlur}
+                            style={cellSel}
+                          >
+                            <option value="">—</option>
+                            {col.opts.map(o=><option key={o} value={o}>{o}</option>)}
+                          </select>
+                        ):(
+                          <input
+                            type={col.type==="date"?"date":"text"}
+                            value={val}
+                            placeholder={!isSaved?col.label:""}
+                            onChange={e=>onChange(col.key,e.target.value)}
+                            onBlur={onBlur}
+                            onKeyDown={e=>onKeyDown(e,sid,isSaved)}
+                            style={{
+                              ...cellInp,
+                              fontFamily:col.mono?"var(--fm)":"var(--fb)",
+                              color:(!val&&!isSaved)?"#bbb":"var(--black)",
+                            }}
+                          />
+                        )}
+                      </td>
+                    );
+                  })}
+                  <td style={{textAlign:"center",borderBottom:"1px solid #eee",padding:"4px 2px"}}>
+                    {ss==="saving" && <Spin/>}
+                    {ss==="ok"     && <span style={{color:"var(--green)",fontSize:14,lineHeight:1}}>✓</span>}
+                    {!ss&&isDirty  && <span style={{color:"#f59e0b",fontSize:16,lineHeight:1}}>●</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        <div
+          onClick={()=>addMoreRows(10)}
+          style={{padding:"7px 12px 7px 40px",fontSize:10,fontFamily:"var(--fd)",fontWeight:700,letterSpacing:".12em",textTransform:"uppercase",color:"var(--muted)",cursor:"pointer",borderTop:"1px solid #eee",background:"#fafafa",userSelect:"none"}}
+          onMouseEnter={e=>e.currentTarget.style.color="var(--black)"}
+          onMouseLeave={e=>e.currentTarget.style.color="var(--muted)"}
+        >
+          + Add 10 more rows
+        </div>
+
+        <div style={{padding:"5px 12px",fontSize:10,fontFamily:"var(--fm)",color:"var(--muted)",background:"#fafafa",borderTop:"1px solid #eee",display:"flex",gap:16,flexWrap:"wrap"}}>
+          <span>Tab — next cell</span>
+          <span>Enter — next row</span>
+          <span>Auto-saves on blur</span>
+          {Object.values(saveState).some(s=>s==="saving") && <span style={{color:"var(--blue)"}}>Saving…</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
 
   return (
     <div className="t-fade">
