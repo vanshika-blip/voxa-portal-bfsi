@@ -3204,7 +3204,7 @@ function App() {
   else if(view==="campaigns") content=<CampaignsView agents={agents} user={user} teams={teams} onViewLeads={onViewLeads}/>;
   else if(view==="myagents") content=<TLAgentsView user={user} agents={agents} refreshAgents={newAgents=>{setAgents(newAgents);}}/>;
   else if(view==="people")     content=<PeopleView user={user} agents={agents} teams={teams}/>;
-  else if(view==="lineup")     content=<div className="t-fade"><div className="t-mast"><div><div className="t-mast-title">Interview Lineup</div><div className="t-mast-sub">Coming in Slice 5</div></div></div><div className="t-empty">This page will be built in a later slice.</div></div>;
+  else if(view==="lineup")     content=<InterviewLineupView user={user}/>;
   else if(view==="manual")     content=<ManualTrackerView user={user}/>;
   else if(view==="agentintel") content=<AgentIntelView user={user} agents={agents}/>;
   else if(view==="setup")      content=<SetupView/>;
@@ -3219,6 +3219,228 @@ function App() {
   );
 }
 
+// ─────────────────────────────────────────────────────────────
+// INTERVIEW LINEUP VIEW
+// ─────────────────────────────────────────────────────────────
+
+const IL_SELECTION_OPTS = ["FB Pending","Telephonic","VC","F2F","Finals","Process","Reject","TL Reject","Interview Reject","Position on hold","Position Closed","Offered","Joined","Backout","Offer Backout","Duplicate","Use Later","On Hold","Drop"];
+const IL_TURNUP_OPTS    = ["Interview Scheduled","Interview Completed","No Show / Not Interested Now","Rejected (After Interview)","Selected / Offer in Process","Backout (Post Offer)"];
+
+function InterviewLineupView({ user }) {
+  const [rows,    setRows]    = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [timeFil, setTimeFil] = useState("7d");
+
+  async function load() {
+    setLoading(true);
+    const r = await api("getInterviewLineup", {});
+    setLoading(false);
+    if (r.ok) setRows(r.rows || []);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function handleUpdate(callId, field, value) {
+    if (!callId) return;
+    setRows(prev => prev.map(r =>
+      String(r["Call ID"]) === callId ? {...r, [field]: value} : r
+    ));
+    const res = await api("updateInterviewLead", { callId, fields: { [field]: value } });
+    if (!res.ok) load();
+  }
+
+  // Time filter applied to display (counts always use full rows)
+  const filteredByTime = useMemo(() => {
+    if (timeFil === "all") return rows;
+    const cutoff = new Date();
+    if (timeFil === "today") cutoff.setHours(0,0,0,0);
+    else { cutoff.setDate(cutoff.getDate() - (timeFil === "7d" ? 7 : 30)); cutoff.setHours(0,0,0,0); }
+    return rows.filter(r => {
+      const d = r["Date Added"] || r["Started At"];
+      if (!d) return false;
+      try { return new Date(d) >= cutoff; } catch { return false; }
+    });
+  }, [rows, timeFil]);
+
+  function countFor(days) {
+    if (days < 0) return rows.length;
+    const cutoff = new Date();
+    if (days === 0) cutoff.setHours(0,0,0,0);
+    else { cutoff.setDate(cutoff.getDate()-days); cutoff.setHours(0,0,0,0); }
+    return rows.filter(r => {
+      const d = r["Date Added"] || r["Started At"];
+      if (!d) return false;
+      try { return new Date(d) >= cutoff; } catch { return false; }
+    }).length;
+  }
+
+  const shownCols = [
+    "Source","Date Added","Callee Name","Mobile Number",
+    "Client","Role","Agent Name",
+    "Selection Process","Turnup Status",
+    "Assigned Recruiter Name","Month",
+  ];
+
+  const { filters, filtered, colValues, setColFilter, clearFilters } = useTableFilters(filteredByTime, shownCols);
+  const hasFilters = Object.keys(filters).length > 0;
+
+  // KPIs from full dataset
+  const totalCount     = rows.length;
+  const scheduledCount = rows.filter(r => String(r["Turnup Status"]||"").toLowerCase().includes("scheduled")).length;
+  const completedCount = rows.filter(r => String(r["Turnup Status"]||"").toLowerCase().includes("completed")).length;
+  const joinedCount    = rows.filter(r => {
+    const sp = String(r["Selection Process"]||"").toLowerCase();
+    return sp.includes("joined") || sp.includes("offered");
+  }).length;
+
+  const TIME_TABS = [
+    {id:"today", label:"Today",        count:countFor(0)},
+    {id:"7d",    label:"Last 7 days",  count:countFor(7)},
+    {id:"30d",   label:"Last 30 days", count:countFor(30)},
+    {id:"all",   label:"All time",     count:totalCount},
+  ];
+
+  function canEdit(row) {
+    const ae = String(row["Assigned Recruiter Email"]||"").toLowerCase();
+    return ae === user.email.toLowerCase()
+      || user.role === "team_lead"
+      || user.role === "individual_contributor"
+      || user.role === "super_admin";
+  }
+
+  function renderCell(col, val, row) {
+    const callId  = String(row["Call ID"] || "");
+    const strVal  = String(val ?? "") || "";
+    const editable = canEdit(row);
+
+    if (col === "Source") {
+      const isAI = !strVal || strVal === "AI";
+      return <span className={"t-pill " + (isAI ? "t-pill-blue" : "t-pill-gray")}>{isAI ? "AI" : "Manual"}</span>;
+    }
+    if (col === "Selection Process") {
+      return editable
+        ? <StatusSelect options={IL_SELECTION_OPTS} value={strVal} onChange={v => handleUpdate(callId,"Selection Process",v)}/>
+        : <LeadPill value={strVal}/>;
+    }
+    if (col === "Turnup Status") {
+      return editable
+        ? <StatusSelect options={IL_TURNUP_OPTS} value={strVal} onChange={v => handleUpdate(callId,"Turnup Status",v)}/>
+        : <LeadPill value={strVal}/>;
+    }
+    if (col === "Date Added") return <DateCell value={strVal}/>;
+    if (!strVal) return <span style={{color:"#ccc"}}>—</span>;
+    if (col === "Mobile Number") return <span className="t-mono">{strVal}</span>;
+    if (col === "Month") return <span className="t-mono" style={{fontSize:10,color:"var(--muted)"}}>{strVal}</span>;
+    return <span style={{fontSize:12}}>{strVal}</span>;
+  }
+
+  return (
+    <div className="t-fade" style={{display:"flex",flexDirection:"column",minHeight:"calc(100vh - 48px)"}}>
+      <div className="t-mast">
+        <div>
+          <div className="t-mast-title">Interview Lineup</div>
+          <div className="t-mast-sub">
+            {totalCount} candidates · {scheduledCount} scheduled · {joinedCount} joined/offered
+          </div>
+        </div>
+        <div className="t-mast-r">
+          {hasFilters && (
+            <button className="t-btn t-btn-sm" style={{background:"var(--yellow)",color:"var(--black)",border:"none"}} onClick={clearFilters}>
+              Clear Filters ×
+            </button>
+          )}
+          <button className="t-btn t-btn-outline t-btn-sm" style={{color:"rgba(255,255,255,.7)",borderColor:"rgba(255,255,255,.3)",background:"transparent"}} onClick={load}>
+            ↻ Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* KPIs */}
+      <div className="t-kpis" style={{gridTemplateColumns:"repeat(4,1fr)"}}>
+        {[
+          {label:"Total in Lineup",     value:totalCount,    color:"#5b21b6"},
+          {label:"Interview Scheduled", value:scheduledCount,color:"#0066b3"},
+          {label:"Completed",           value:completedCount,color:"#009149"},
+          {label:"Joined / Offered",    value:joinedCount,   color:"#e2001a", highlight:true},
+        ].map(k=>(
+          <div key={k.label} className="t-kpi" style={k.highlight?{background:"#fff5f5"}:{}}>
+            <div className="t-kpi-accent" style={{background:k.color}}/>
+            <div className="t-kpi-label">{k.label}</div>
+            <div className="t-kpi-value" style={k.highlight?{color:k.color}:{}}>{k.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Time tabs */}
+      <div className="t-tabs">
+        {TIME_TABS.map(t=>(
+          <div key={t.id} className={"t-tab"+(timeFil===t.id?" active":"")} onClick={()=>setTimeFil(t.id)}>
+            {t.label}
+            <span style={{fontSize:9,marginLeft:5,opacity:.55,fontFamily:"var(--fm)"}}>{t.count}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Table */}
+      <div style={{flex:1,background:"var(--white)"}}>
+        {loading && <div style={{padding:60,textAlign:"center"}}><Spin/></div>}
+
+        {!loading && rows.length === 0 && (
+          <div className="t-empty" style={{lineHeight:2}}>
+            No candidates in the interview lineup yet.
+            <br/>
+            <span style={{fontSize:12,color:"var(--muted)",fontWeight:400}}>
+              Candidates appear here automatically when a lead's feedback is set to "Interested – Interview Lined Up".
+            </span>
+          </div>
+        )}
+
+        {!loading && rows.length > 0 && filtered.length === 0 && (
+          <div className="t-empty">
+            No entries match the current filters.
+            <button className="t-btn t-btn-outline t-btn-sm" style={{marginLeft:12}} onClick={clearFilters}>Clear filters</button>
+          </div>
+        )}
+
+        {!loading && filtered.length > 0 && (
+          <div className="t-tbl-wrap">
+            <table className="t-tbl">
+              <thead>
+                <tr>
+                  {shownCols.map(h=>(
+                    <th key={h} style={(h==="Selection Process"||h==="Turnup Status")?{minWidth:150}:{}}>{h}</th>
+                  ))}
+                </tr>
+                <tr className="filter-row">
+                  {shownCols.map(h=>(
+                    <td key={h} style={{padding:"2px 3px"}}>
+                      <ExcelColFilter
+                        header={h}
+                        values={colValues[h]||[]}
+                        selected={filters[h]||null}
+                        onChange={v=>setColFilter(h,v)}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((row,i)=>(
+                  <tr key={i}>
+                    {shownCols.map(h=>(
+                      <td key={h} style={(h==="Selection Process"||h==="Turnup Status")?{minWidth:150}:{}}>
+                        {renderCell(h, row[h], row)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────
 // MANUAL TRACKER — Excel-style inline grid
