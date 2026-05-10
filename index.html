@@ -579,8 +579,9 @@ const NAV_ITEMS = [
   { id:"trigger",   label:"Trigger Campaign" },
   { id:"campaigns", label:"Campaigns" },
   { id:"myagents",  label:"Agents", showFor:["team_lead","individual_contributor"] },
-  { id:"users",      label:"Users",       hideFor:["recruiter","individual_contributor"] },
-  { id:"teams",      label:"Teams",       hideFor:["recruiter","team_lead","individual_contributor"] },
+  { id:"people",    label:"People",           hideFor:["recruiter","individual_contributor"] },
+  { id:"lineup",    label:"Interview Lineup" },
+  { id:"manual",    label:"Manual Tracker" },
   { id:"agentintel", label:"Agent Intel", superOnly:true },
 ];
 
@@ -2292,10 +2293,65 @@ function AgentEditModal({ agent, onSave, onClose }) {
   );
 }
 
+
+// ─────────────────────────────────────────────────────────────
+// PEOPLE VIEW — merged Users + Teams under one page
+// Members table is primary. "Manage Teams" button opens a modal
+// where super_admins can create/edit teams and assign agent codes.
+// ─────────────────────────────────────────────────────────────
+function PeopleView({ user, agents, teams: parentTeams }) {
+  const [showTeamsModal, setShowTeamsModal] = useState(false);
+  const canManageTeams = user.role === "super_admin";
+
+  return (
+    <div className="t-fade">
+      <UsersView
+        user={user}
+        teams={parentTeams}
+        extraHeaderActions={canManageTeams ? (
+          <button
+            onClick={()=>setShowTeamsModal(true)}
+            className="t-btn t-btn-outline"
+            style={{color:"var(--black)",borderColor:"var(--black)",marginRight:8}}
+          >Manage Teams</button>
+        ) : null}
+      />
+      {showTeamsModal && (
+        <ManageTeamsModal
+          user={user}
+          agents={agents}
+          onClose={()=>setShowTeamsModal(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// MANAGE TEAMS MODAL — wraps the existing TeamsView in a modal
+// ─────────────────────────────────────────────────────────────
+function ManageTeamsModal({ user, agents, onClose }) {
+  return (
+    <div className="t-modal-bg">
+      <div className="t-modal t-fade" style={{maxWidth:900,width:"95%",maxHeight:"90vh",display:"flex",flexDirection:"column"}}>
+        <div className="t-modal-hd">
+          <span>Manage Teams</span>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:18,lineHeight:1}}>×</button>
+        </div>
+        <div className="t-modal-body" style={{overflowY:"auto",padding:16}}>
+          <TeamsView user={user} agents={agents}/>
+        </div>
+        <div className="t-modal-footer">
+          <button onClick={onClose} className="t-btn t-btn-black">Done</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 // ─────────────────────────────────────────────────────────────
 // USERS VIEW
 // ─────────────────────────────────────────────────────────────
-function UsersView({ user, teams }) {
+function UsersView({ user, teams, extraHeaderActions }) {
   const [users,setUsers]=useState([]); const [loading,setLoading]=useState(true);
   const [editing,setEditing]=useState(null); const [adding,setAdding]=useState(false);
   async function refresh(){ setLoading(true); const r=await api("listUsers",{}); setLoading(false); if(r.ok)setUsers(r.users||[]); }
@@ -2309,7 +2365,10 @@ function UsersView({ user, teams }) {
     <div className="t-fade">
       <div className="t-mast">
         <div><div className="t-mast-title">Users</div><div className="t-mast-sub">{users.filter(u=>u.active).length} active · {users.filter(u=>u.pending).length} pending</div></div>
-        <button onClick={()=>setAdding(true)} className="t-btn t-btn-outline" style={{color:"var(--black)",borderColor:"var(--black)"}}>+ Add User</button>
+        <div style={{display:"flex",alignItems:"center"}}>
+          {extraHeaderActions}
+          <button onClick={()=>setAdding(true)} className="t-btn t-btn-outline" style={{color:"var(--black)",borderColor:"var(--black)"}}>+ Add User</button>
+        </div>
       </div>
       <div className="t-board">
         <div className="t-board-hd"><h2 className="t-board-hd-title">Team Members</h2></div>
@@ -3081,8 +3140,9 @@ function App() {
   else if(view==="trigger") content=<UploadView user={user} agents={agents} refreshMe={refreshMe}/>;
   else if(view==="campaigns") content=<CampaignsView agents={agents} user={user} teams={teams} onViewLeads={onViewLeads}/>;
   else if(view==="myagents") content=<TLAgentsView user={user} agents={agents} refreshAgents={newAgents=>{setAgents(newAgents);}}/>;
-  else if(view==="users") content=<UsersView user={user} teams={teams}/>;
-  else if(view==="teams")      content=<TeamsView user={user} agents={agents}/>;
+  else if(view==="people")     content=<PeopleView user={user} agents={agents} teams={teams}/>;
+  else if(view==="lineup")     content=<div className="t-fade"><div className="t-mast"><div><div className="t-mast-title">Interview Lineup</div><div className="t-mast-sub">Coming in Slice 5</div></div></div><div className="t-empty">This page will be built in a later slice.</div></div>;
+  else if(view==="manual")     content=<div className="t-fade"><div className="t-mast"><div><div className="t-mast-title">Manual Tracker</div><div className="t-mast-sub">Coming in Slice 4</div></div></div><div className="t-empty">This page will be built in a later slice.</div></div>;
   else if(view==="agentintel") content=<AgentIntelView user={user} agents={agents}/>;
 
   return (
