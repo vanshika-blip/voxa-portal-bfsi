@@ -599,6 +599,7 @@ const NAV_ITEMS = [
   { id:"people",    label:"People",           hideFor:["recruiter","individual_contributor"] },
   { id:"lineup",    label:"Interview Lineup" },
   { id:"manual",    label:"Manual Tracker" },
+  { id:"support",   label:"Support" },
   { id:"agentintel", label:"Agent Intel", superOnly:true },
 ];
 
@@ -3196,6 +3197,7 @@ function App() {
   else if(view==="people")     content=<PeopleHub user={user} agents={agents} teams={teams}/>;
   else if(view==="lineup")     content=<InterviewLineupView user={user}/>;
   else if(view==="manual")     content=<ManualTrackerView user={user}/>;
+  else if(view==="support")    content=<SupportView user={user}/>;
   else if(view==="agentintel") content=<AgentIntelView user={user} agents={agents}/>;
 
   return (
@@ -3392,18 +3394,17 @@ function InterviewLineupView({ user }) {
 
   // EXACT column order requested
   const shownCols = [
-  "Month","Date Added","Assigned Recruiter Email",
-  "Source","Call ID","Callee Name","Mobile Number",
-  "Agent Code","Agent Name","Campaign Name","Request ID",
-  "Started At",
-  "Selection Process","Turnup Status",
-  "Assigned Recruiter Name",
-  "Client",
-  "Email","DOB","Qualification","Work Experience",
-  "Current CTC","Expected CTC","Notice Period",
-  "Role","Location","CIBIL Score",
-  "SPOC Name","Current Employer","CV Link",
-];
+    "Month","Date Added","Assigned Recruiter Email",
+    "Source","Callee Name","Mobile Number",
+    "Agent Code","Campaign Name",
+    "Selection Process","Turnup Status",
+    "Assigned Recruiter Name",
+    "Client",
+    "Email","DOB","Qualification","Work Experience",
+    "Current CTC","Expected CTC","Notice Period",
+    "Role","Location","CIBIL Score",
+    "SPOC Name","Current Employer","CV Link",
+  ];
 
   const EDITABLE_FIELDS = new Set([
     "Selection Process","Turnup Status",
@@ -3415,8 +3416,8 @@ function InterviewLineupView({ user }) {
 
   // Use only filterable text-ish cols, not free-text long fields
   const FILTER_COLS = [
-    "Source","Started At","Callee Name","Mobile Number","Client","Role",
-    "Agent Name","Selection Process","Turnup Status","Assigned Recruiter Name","Month",
+    "Source","Callee Name","Mobile Number","Client","Role",
+    "Agent Code","Selection Process","Turnup Status","Assigned Recruiter Name","Month",
   ];
   const { filters, filtered, colValues, setColFilter, clearFilters } = useTableFilters(filteredByTime, FILTER_COLS);
   const hasFilters = Object.keys(filters).length > 0;
@@ -3701,16 +3702,16 @@ function InterviewLineupView({ user }) {
 
 const MT_STATUS_OPTS = ["Connected","DNP-1","DNP-2","DNP-3","DNP-4","DNP-5","Not Interested","Call Back","Hiring On Hold","Irrelevant"];
 const MT_LINED_OPTS  = ["Yes","No","Pending"];
-const MT_SOURCE_OPTS = ["LinkedIn","Referral","Walk-in","Job Portal","WhatsApp","Cold Call","Database","Other"];
+const MT_SOURCE_OPTS = ["LinkedIn","Hunar Marketplace","Naukri","Shine","FoundIt","Apna","Job Hai","Work India","Reference","Other"];
 
 const MT_COLS_BASE = [
-  { key:"date",       label:"Date",          w:86,   type:"date" },
+  { key:"date",       label:"Date",          w:110,  type:"date" },
   { key:"name",       label:"Candidate Name",w:150              },
   { key:"phone",      label:"Contact",       w:115,  mono:true  },
   { key:"location",   label:"Location",      w:90               },
-  { key:"client",     label:"Client",        w:90               },
+  { key:"client",     label:"Client",        w:140              },
   { key:"role",       label:"Role",          w:100              },
-  { key:"source",     label:"Source",        w:90               },
+  { key:"source",     label:"Source",        w:110,  type:"select", opts:MT_SOURCE_OPTS },
   { key:"callStatus", label:"Call Status",   w:130,  type:"select", opts:MT_STATUS_OPTS },
   { key:"linedUp",    label:"Lined Up",      w:80,   type:"select", opts:MT_LINED_OPTS  },
   { key:"remarks",    label:"Remarks",       w:"auto"           },
@@ -3923,14 +3924,14 @@ function ManualTrackerView({ user }) {
     return ()=>clearInterval(t);
   },[]);
 
-function patchSaved(uid, key, val) {
-  setSaved(prev=>prev.map(r=>r.uid===uid?{...r,[key]:val,_dirty:true}:r));
-  // no auto-save; save happens on blur/Tab/Enter
-}
-function patchEmpty(id, key, val) {
-  setEmpties(prev=>prev.map(r=>r._id===id?{...r,[key]:val}:r));
-  // no auto-save; save happens on blur/Tab/Enter
-}
+  function patchSaved(uid, key, val) {
+    setSaved(prev=>prev.map(r=>r.uid===uid?{...r,[key]:val,_dirty:true}:r));
+    // save on blur/Tab/Enter only
+  }
+  function patchEmpty(id, key, val) {
+    setEmpties(prev=>prev.map(r=>r._id===id?{...r,[key]:val}:r));
+    // save on blur/Tab/Enter only
+  }
 
   function _setSS(sid, state) {
     setSaveState(p=>({...p,[sid]:state}));
@@ -4152,29 +4153,35 @@ function patchEmpty(id, key, val) {
                           />
                         ) : col.type==="select"?(
                           <select
-  value={val}
-  disabled={isSaving}
-  onChange={e=>onChange(col.key,e.target.value)}
-  onBlur={()=>saveNow(sid, isSaved)}
-  style={{...cellSel, opacity: isSaving ? 0.5 : 1}}
->
+                            value={val}
+                            disabled={isSaving}
+                            onChange={e=>onChange(col.key,e.target.value)}
+                            onBlur={()=>saveNow(sid, isSaved)}
+                            style={{...cellSel, opacity: isSaving ? 0.5 : 1}}
+                          >
                             <option value="">—</option>
                             {col.opts.map(o=><option key={o} value={o}>{o}</option>)}
                           </select>
                         ):(
                           <input
-  type={col.type==="date"?"date":"text"}
-  value={val}
-  disabled={isSaving}
-  placeholder={!isSaved?col.label:""}
-  onChange={e=>onChange(col.key,e.target.value)}
-  onBlur={()=>saveNow(sid, isSaved)}
-  onKeyDown={e=>{
-    if (e.key==="Enter" || e.key==="Tab") {
-      saveNow(sid, isSaved);
-    }
-    onKeyDown(e,sid,isSaved);
-  }}
+                            type={col.type==="date"?"date":"text"}
+                            value={val}
+                            disabled={isSaving}
+                            placeholder={!isSaved?col.label:""}
+                            onChange={e=>onChange(col.key,e.target.value)}
+                            onBlur={()=>saveNow(sid, isSaved)}
+                            onKeyDown={e=>{
+                              if (e.key==="Enter" || e.key==="Tab") {
+                                saveNow(sid, isSaved);
+                              }
+                              onKeyDown(e,sid,isSaved);
+                            }}
+                            style={{
+                              ...cellInp,
+                              fontFamily:col.mono?"var(--fm)":"var(--fb)",
+                              color:(!val&&!isSaved)?"#bbb":"var(--black)",
+                              opacity: isSaving ? 0.5 : 1,
+                            }}
                           />
                         )}
                       </td>
@@ -4204,7 +4211,6 @@ function patchEmpty(id, key, val) {
           <span>Tab — next cell</span>
           <span>Enter — next row</span>
           <span>Saves on blur, Tab, or Enter</span>
-          <span>Tab / Enter — save now &amp; jump to next</span>
           {Object.values(saveState).some(s=>s==="saving") && <span style={{color:"var(--blue)"}}>Saving…</span>}
         </div>
       </div>
@@ -4584,6 +4590,275 @@ function AgentIntelView({ user, agents }) {
 }
 
 
+
+// ─────────────────────────────────────────────────────────────
+// SUPPORT VIEW — raise & track queries, super admin resolves
+// ─────────────────────────────────────────────────────────────
+const SUPPORT_ADMIN_EMAIL = "vanshika@hunar.ai";
+
+function SupportView({ user }) {
+  const isSuperAdmin = user.role === "super_admin";
+  const [tab, setTab] = useState(isSuperAdmin ? "all" : "mine");
+  const [queries, setQueries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showNew, setShowNew] = useState(false);
+  const [selected, setSelected] = useState(null); // query for detail modal
+
+  async function load() {
+    setLoading(true);
+    const r = await api("getSupportQueries", {});
+    setLoading(false);
+    if (r.ok) setQueries(r.queries || []);
+  }
+  useEffect(() => { load(); }, []);
+
+  const myQueries = queries.filter(q => String(q.raisedByEmail || "").toLowerCase() === user.email.toLowerCase());
+  const allQueries = queries;
+  const openCount = allQueries.filter(q => q.status !== "Resolved").length;
+
+  const displayList = tab === "mine" ? myQueries : allQueries;
+
+  function statusColor(s) {
+    if (s === "Resolved") return { bg:"#d1fae5", color:"#065f46" };
+    if (s === "In Progress") return { bg:"#e8f0fe", color:"#1e40af" };
+    return { bg:"#fff3cd", color:"#92400e" };
+  }
+
+  return (
+    <div className="t-fade" style={{display:"flex",flexDirection:"column",minHeight:"calc(100vh - 48px)"}}>
+      <div className="t-mast">
+        <div>
+          <div className="t-mast-title">Support</div>
+          <div className="t-mast-sub">{openCount} open {openCount===1?"query":"queries"} · raise issues, upload screenshots, get resolution</div>
+        </div>
+        <div className="t-mast-r">
+          <button className="t-btn t-btn-red t-btn-sm" onClick={()=>setShowNew(true)}>+ Raise Query</button>
+        </div>
+      </div>
+
+      {isSuperAdmin && (
+        <div className="t-tabs">
+          {[
+            {id:"all",  label:`All Queries (${allQueries.length})`},
+            {id:"mine", label:`My Queries (${myQueries.length})`},
+          ].map(t=>(
+            <div key={t.id} className={"t-tab"+(tab===t.id?" active":"")} onClick={()=>setTab(t.id)}>{t.label}</div>
+          ))}
+        </div>
+      )}
+
+      <div style={{padding:"16px 20px",flex:1}}>
+        {loading && <div style={{padding:60,textAlign:"center"}}><Spin/></div>}
+        {!loading && displayList.length === 0 && (
+          <div className="t-empty" style={{lineHeight:2}}>
+            No queries yet.
+            <br/>
+            <button className="t-btn t-btn-black t-btn-sm" style={{marginTop:12}} onClick={()=>setShowNew(true)}>+ Raise your first query</button>
+          </div>
+        )}
+        {!loading && displayList.length > 0 && (
+          <div style={{display:"flex",flexDirection:"column",gap:10,maxWidth:900}}>
+            {displayList.sort((a,b)=>new Date(b.raisedAt||0)-new Date(a.raisedAt||0)).map(q=>{
+              const sc = statusColor(q.status);
+              return (
+                <div key={q._id} onClick={()=>setSelected(q)} style={{border:"1.5px solid var(--border)",background:"#fff",padding:"14px 18px",cursor:"pointer",borderRadius:3,transition:"border-color .12s,box-shadow .12s"}}
+                  onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--black)";e.currentTarget.style.boxShadow="3px 3px 0 var(--black)";}}
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border)";e.currentTarget.style.boxShadow="none";}}>
+                  <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:6}}>
+                    <span style={{fontFamily:"var(--fd)",fontWeight:900,fontSize:14,flex:1}}>{q.title}</span>
+                    <span style={{padding:"3px 10px",fontSize:10,fontFamily:"var(--fd)",fontWeight:700,background:sc.bg,color:sc.color,borderRadius:3,whiteSpace:"nowrap"}}>{q.status||"Open"}</span>
+                  </div>
+                  <div style={{fontSize:12,color:"#555",lineHeight:1.5,marginBottom:8,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{q.description}</div>
+                  <div style={{display:"flex",gap:16,fontSize:10,fontFamily:"var(--fm)",color:"var(--muted)",flexWrap:"wrap"}}>
+                    <span>By: {q.raisedByName||q.raisedByEmail||"—"}</span>
+                    <span>{q.raisedAt ? new Date(q.raisedAt).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "—"}</span>
+                    {q.screenshot && <span style={{color:"var(--blue)"}}>📎 Screenshot</span>}
+                    {q.resolution && <span style={{color:"var(--green)"}}>✓ Resolution added</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {showNew && (
+        <NewQueryModal user={user} onClose={()=>setShowNew(false)} onSaved={()=>{ setShowNew(false); load(); }}/>
+      )}
+      {selected && (
+        <QueryDetailModal query={selected} user={user} isSuperAdmin={isSuperAdmin}
+          onClose={()=>setSelected(null)}
+          onUpdated={(updated)=>{ setQueries(prev=>prev.map(q=>q._id===updated._id?updated:q)); setSelected(updated); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function NewQueryModal({ user, onClose, onSaved }) {
+  const [title, setTitle] = useState("");
+  const [desc, setDesc] = useState("");
+  const [screenshot, setScreenshot] = useState(null); // base64
+  const [screenshotName, setScreenshotName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const fileRef = useRef(null);
+
+  function handleFile(e) {
+    const f = e.target.files[0];
+    if (!f) return;
+    if (!f.type.startsWith("image/")) { setErr("Please upload an image file."); return; }
+    if (f.size > 5 * 1024 * 1024) { setErr("Image must be under 5MB."); return; }
+    setScreenshotName(f.name);
+    const reader = new FileReader();
+    reader.onload = ev => setScreenshot(ev.target.result);
+    reader.readAsDataURL(f);
+  }
+
+  async function submit() {
+    if (!title.trim()) { setErr("Please add a title."); return; }
+    if (!desc.trim()) { setErr("Please describe your issue."); return; }
+    setBusy(true); setErr("");
+    const r = await api("raiseSupportQuery", {
+      title: title.trim(),
+      description: desc.trim(),
+      screenshot: screenshot || null,
+      screenshotName: screenshotName || null,
+    });
+    setBusy(false);
+    if (!r.ok) { setErr(r.message || r.error || "Failed to submit."); return; }
+    onSaved();
+  }
+
+  return (
+    <div className="t-modal-bg" onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
+      <div className="t-modal t-fade" style={{maxWidth:540}}>
+        <div className="t-modal-hd">
+          <span style={{textTransform:"none",letterSpacing:0,fontSize:15}}>Raise a Query</span>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:20}}>×</button>
+        </div>
+        <div className="t-modal-body" style={{display:"flex",flexDirection:"column",gap:14}}>
+          <div>
+            <label className="t-label">Title <span style={{color:"var(--red)"}}>*</span></label>
+            <input className="t-input" value={title} onChange={e=>setTitle(e.target.value)} placeholder="Brief summary of your issue" autoFocus maxLength={120}/>
+          </div>
+          <div>
+            <label className="t-label">Description <span style={{color:"var(--red)"}}>*</span></label>
+            <textarea className="t-input" rows={4} value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Describe the issue in detail…" style={{resize:"vertical",fontSize:13,lineHeight:1.6,fontFamily:"var(--fb)"}}/>
+          </div>
+          <div>
+            <label className="t-label">Screenshot (optional)</label>
+            <div
+              onClick={()=>fileRef.current?.click()}
+              style={{border:"2px dashed var(--border)",padding:"16px 20px",textAlign:"center",cursor:"pointer",background:"#fafafa",borderRadius:3,transition:"border-color .15s"}}
+              onMouseEnter={e=>e.currentTarget.style.borderColor="var(--black)"}
+              onMouseLeave={e=>e.currentTarget.style.borderColor="var(--border)"}
+            >
+              {screenshot
+                ? <div><img src={screenshot} alt="preview" style={{maxHeight:120,maxWidth:"100%",border:"1px solid #ddd",borderRadius:3}}/><div style={{fontSize:11,color:"var(--muted)",marginTop:6}}>{screenshotName} <span onClick={e=>{e.stopPropagation();setScreenshot(null);setScreenshotName("");}} style={{color:"var(--red)",cursor:"pointer",marginLeft:8}}>✕ Remove</span></div></div>
+                : <div><div style={{fontSize:11,color:"var(--muted)"}}>Click to upload a screenshot</div><div style={{fontSize:10,color:"#bbb",marginTop:4}}>PNG, JPG, GIF — max 5MB</div></div>
+              }
+            </div>
+            <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleFile}/>
+          </div>
+          {err && <Alert type="error">{err}</Alert>}
+        </div>
+        <div className="t-modal-footer">
+          <button onClick={onClose} className="t-btn t-btn-outline">Cancel</button>
+          <button onClick={submit} disabled={busy} className="t-btn t-btn-black">{busy?<Spin/>:"Submit Query"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QueryDetailModal({ query, user, isSuperAdmin, onClose, onUpdated }) {
+  const [resolution, setResolution] = useState(query.resolution || "");
+  const [status, setStatus] = useState(query.status || "Open");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [msg, setMsg] = useState("");
+
+  async function saveResolution() {
+    if (!resolution.trim()) { setErr("Please enter a resolution."); return; }
+    setBusy(true); setErr(""); setMsg("");
+    const r = await api("resolveSupportQuery", {
+      queryId: query._id,
+      resolution: resolution.trim(),
+      status,
+    });
+    setBusy(false);
+    if (!r.ok) { setErr(r.message || r.error || "Failed."); return; }
+    setMsg("Saved! An email has been sent to the user.");
+    onUpdated({ ...query, resolution: resolution.trim(), status });
+  }
+
+  const sc = query.status === "Resolved"
+    ? { bg:"#d1fae5", color:"#065f46" }
+    : query.status === "In Progress"
+    ? { bg:"#e8f0fe", color:"#1e40af" }
+    : { bg:"#fff3cd", color:"#92400e" };
+
+  return (
+    <div className="t-modal-bg" onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
+      <div className="t-modal t-fade" style={{maxWidth:600}}>
+        <div className="t-modal-hd">
+          <span style={{textTransform:"none",letterSpacing:0,fontSize:15,flex:1,paddingRight:12}}>{query.title}</span>
+          <span style={{padding:"3px 10px",fontSize:10,fontFamily:"var(--fd)",fontWeight:700,background:sc.bg,color:sc.color,borderRadius:3,marginRight:12}}>{query.status||"Open"}</span>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:20}}>×</button>
+        </div>
+        <div className="t-modal-body" style={{display:"flex",flexDirection:"column",gap:14}}>
+          <div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--muted)",display:"flex",gap:16,flexWrap:"wrap"}}>
+            <span>Raised by: <b style={{color:"var(--black)"}}>{query.raisedByName||query.raisedByEmail||"—"}</b></span>
+            <span>{query.raisedAt ? new Date(query.raisedAt).toLocaleString("en-IN") : "—"}</span>
+          </div>
+
+          <div style={{background:"#f8f8f8",border:"1.5px solid #eee",padding:"12px 14px",borderRadius:3}}>
+            <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:9,letterSpacing:".18em",textTransform:"uppercase",color:"var(--muted)",marginBottom:6}}>Issue Description</div>
+            <div style={{fontSize:13,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{query.description}</div>
+          </div>
+
+          {query.screenshot && (
+            <div>
+              <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:9,letterSpacing:".18em",textTransform:"uppercase",color:"var(--muted)",marginBottom:6}}>Screenshot</div>
+              <img src={query.screenshot} alt="screenshot" style={{maxWidth:"100%",maxHeight:280,border:"1.5px solid #ddd",borderRadius:3,display:"block"}}/>
+            </div>
+          )}
+
+          {query.resolution && !isSuperAdmin && (
+            <div style={{background:"#f0fff7",border:"1.5px solid #6ee7b7",padding:"12px 14px",borderRadius:3}}>
+              <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:9,letterSpacing:".18em",textTransform:"uppercase",color:"var(--green)",marginBottom:6}}>✓ Resolution</div>
+              <div style={{fontSize:13,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{query.resolution}</div>
+            </div>
+          )}
+
+          {isSuperAdmin && (
+            <div style={{borderTop:"1.5px solid #eee",paddingTop:14}}>
+              <div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:9,letterSpacing:".18em",textTransform:"uppercase",color:"var(--muted)",marginBottom:8}}>Admin Resolution</div>
+              <div style={{display:"flex",gap:8,marginBottom:10}}>
+                {["Open","In Progress","Resolved"].map(s=>(
+                  <button key={s} onClick={()=>setStatus(s)} style={{padding:"5px 14px",fontSize:10,fontFamily:"var(--fd)",fontWeight:700,border:"2px solid",borderColor:status===s?"var(--black)":"var(--border)",background:status===s?"var(--black)":"#fff",color:status===s?"#fff":"var(--muted)",cursor:"pointer",borderRadius:3,letterSpacing:".06em"}}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+              <textarea className="t-input" rows={4} value={resolution} onChange={e=>setResolution(e.target.value)} placeholder="Type your resolution / response here…" style={{resize:"vertical",fontSize:13,lineHeight:1.6,fontFamily:"var(--fb)",marginBottom:8}}/>
+              <div style={{fontSize:10,color:"var(--muted)",fontFamily:"var(--fm)",marginBottom:8}}>Saving will email the user at <b>{query.raisedByEmail}</b></div>
+              {err && <Alert type="error">{err}</Alert>}
+              {msg && <Alert type="success">{msg}</Alert>}
+              <div style={{display:"flex",gap:8,marginTop:8}}>
+                <button onClick={saveResolution} disabled={busy} className="t-btn t-btn-black">{busy?<Spin/>:"Save & Notify User"}</button>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="t-modal-footer">
+          <button onClick={onClose} className="t-btn t-btn-outline">Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
