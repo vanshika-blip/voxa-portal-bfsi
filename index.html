@@ -2792,7 +2792,7 @@ function TLQualEditor({ agent, onBack, onSaved }) {
   async function save(){
     setSaving(true); setMsg({type:"",text:""});
     const rules=Object.entries(qualRules).filter(([f])=>f).map(([field,keywords])=>({field,keywords}));
-    const r=await api("upsertMyAgent",{agent:{...agent,qualificationRules:rules,qualificationField:rules[0]?.field||"",qualificationValues:rules.flatMap(r=>r.keywords),qualificationValue:rules.flatMap(r=>r.keywords)[0]||""}});
+    const r=await api("upsertMyAgent",{agent:{agentCode:agent.agentCode,agentId:agent.agentId,qualificationRules:rules,qualificationField:rules[0]?.field||"",qualificationValues:rules.flatMap(r=>r.keywords),qualificationValue:rules.flatMap(r=>r.keywords)[0]||""}});
     setSaving(false);
     if(!r.ok){ setMsg({type:"error",text:r.message||r.error}); return; }
 setMsg({type:"success",text:"Rules saved!"}); setTimeout(onSaved,900);
@@ -2877,13 +2877,7 @@ function TLAddByIdView({ onBack, onAdd, saving, msg, addedAgent }) {
     if(!addedAgent) return;
     setSavingQual(true); setQualMsg({type:"",text:""});
     const rules = Object.entries(qualRules).filter(([f])=>f).map(([field,keywords])=>({field,keywords}));
-    const r = await api("upsertMyAgent",{agent:{
-      ...addedAgent,
-      qualificationRules: rules,
-      qualificationField: rules[0]?.field||"",
-      qualificationValues: rules.flatMap(r=>r.keywords),
-      qualificationValue: rules.flatMap(r=>r.keywords)[0]||"",
-    }});
+    const r = await api("upsertMyAgent",{agent:{agentCode:addedAgent.agentCode,agentId:addedAgent.agentId,qualificationRules:rules,qualificationField:rules[0]?.field||"",qualificationValues:rules.flatMap(r=>r.keywords),qualificationValue:rules.flatMap(r=>r.keywords)[0]||""}});
     setSavingQual(false);
     if(!r.ok){ setQualMsg({type:"error",text:r.message||r.error}); return; }
     setQualMsg({type:"success",text:"Rules saved!"});
