@@ -1474,7 +1474,7 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
       const fb = String(l["Feedback"]||"").toLowerCase().trim();
       if (!cs) return true;
       if (cs === "DNP-1" || cs === "DNP-2") return true;
-      if (cs === "Connected" && CALLBACK_HINTS.some(k => fb.includes(k))) return true;
+      if (cs === "Connected" && (!fb || CALLBACK_HINTS.some(k => fb.includes(k)))) return true;
       return false;
     }
     return leads.filter(l => tab === "completed" ? isCompleted(l) : isActive(l));
@@ -3262,8 +3262,12 @@ function InterviewLineupView({ user }) {
     else { cutoff.setDate(cutoff.getDate() - (timeFil === "7d" ? 7 : 30)); cutoff.setHours(0,0,0,0); }
     return rows.filter(r => {
       const d = r["Date Added"];
-      if (!d) return false;
-      try { return new Date(d) >= cutoff; } catch { return false; }
+if (!d || String(d).trim() === "") return timeFil === "all";
+try {
+  const parsed = new Date(d);
+  if (isNaN(parsed.getTime())) return timeFil === "all";
+  return parsed >= cutoff;
+} catch { return false; }
     });
   }, [rows, timeFil]);
 
