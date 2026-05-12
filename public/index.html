@@ -906,12 +906,12 @@ function CalendarDatePicker({ selected=[], onChange, onClose }) {
     <div style={{background:"#fff",border:"2px solid var(--black)",padding:16,width:290,boxShadow:"4px 4px 0 rgba(0,0,0,.15)"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
         <button onClick={prevMonth} style={{background:"none",border:"1.5px solid #ddd",cursor:"pointer",padding:"4px 10px",fontSize:16,fontFamily:"var(--fd)",fontWeight:900}}>‹</button>
-        <span style={{fontFamily:"var(--fd)",fontWeight:900,fontSize:14}}>{MONTHS[viewMonth]} {viewYear}</span>
+        <span style={{fontFamily:"var(--fd)",fontWeight:900,fontSize:14,color:"#000000"}}>{MONTHS[viewMonth]} {viewYear}</span>
         <button onClick={nextMonth} style={{background:"none",border:"1.5px solid #ddd",cursor:"pointer",padding:"4px 10px",fontSize:16,fontFamily:"var(--fd)",fontWeight:900}}>›</button>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:6}}>
         {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d=>(
-          <div key={d} style={{textAlign:"center",fontSize:10,fontFamily:"var(--fd)",fontWeight:700,color:"var(--muted)",padding:"2px 0"}}>{d}</div>
+          <div key={d} style={{textAlign:"center",fontSize:10,fontFamily:"var(--fd)",fontWeight:700,color:"#000000",padding:"2px 0"}}>{d}</div>
         ))}
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
@@ -926,7 +926,7 @@ function CalendarDatePicker({ selected=[], onChange, onClose }) {
               padding:"7px 0",textAlign:"center",fontSize:12,fontFamily:"var(--fb)",
               border:isToday?"2px solid var(--black)":"1px solid transparent",
               background:isSel?"var(--black)":"transparent",
-              color:isSel?"#fff":isFuture?"#ccc":isToday?"var(--red)":"var(--black)",
+              color:isSel?"#fff":isFuture?"#ccc":"#000000",
               cursor:isFuture?"not-allowed":"pointer",borderRadius:4,
               fontWeight:isToday?700:400,
             }}>{day}</button>
@@ -980,20 +980,24 @@ function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
   const [section, setSection] = useState("overview");
   const [peopleTeamFilter, setPeopleTeamFilter] = useState("");
 
-  async function load() {
-    const dateParams = customDates.length > 0 ? {dates: customDates} : {range};
+  async function loadWithParams(dates, r, agent) {
+    const dateParams = dates.length > 0 ? {dates} : {range: r};
     const [d, u, m] = await Promise.all([
-      api("getDashboard", {...dateParams, agentCode: selectedAgent}),
+      api("getDashboard", {...dateParams, agentCode: agent}),
       api("getUsage", dateParams),
-      api("getMinutesTracking", {}),
+      api("getMinutesTracking", dateParams),
     ]);
     if(d.ok) setDashData(d);
     if(u.ok) setUsageData(u);
-    if(m.ok) setMinutesData(m); // ← NEW
+    if(m.ok) setMinutesData(m);
   }
 
-  useEffect(()=>{ setDashData(null); setUsageData(null); setMinutesData(null); load(); },[range,selectedAgent]);
-  useEffect(()=>{ const t=setInterval(load,5*60*1000); return()=>clearInterval(t); },[range,selectedAgent]);
+  async function load() {
+    await loadWithParams(customDates, range, selectedAgent);
+  }
+
+  useEffect(()=>{ setDashData(null); setUsageData(null); setMinutesData(null); loadWithParams(customDates, range, selectedAgent); },[range,selectedAgent,customDates.join(",")]);
+  useEffect(()=>{ const t=setInterval(load,5*60*1000); return()=>clearInterval(t); },[range,selectedAgent,customDates.join(",")]);
 
   if(!dashData||!usageData) return <div style={{display:"flex",justifyContent:"center",padding:60}}><Spin/></div>;
   const s = dashData.stats||{};
@@ -1033,7 +1037,7 @@ function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
         <div>
           <div className="t-mast-title">Dashboard</div>
           <div className="t-mast-sub" style={{display:"flex",alignItems:"center",gap:10}}>
-            <span>{range==="today"?"Today":range==="7d"?"Last 7 days":"Last 30 days"}</span>
+            <span>{customDates.length>0?`${customDates.length} date${customDates.length>1?"s":""} selected`:range==="today"?"Today":range==="7d"?"Last 7 days":"Last 30 days"}</span>
             <span className="refresh-badge"><span className="refresh-dot"/>Auto-refresh 5m</span>
           </div>
         </div>
@@ -1051,7 +1055,7 @@ function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
     <div style={{position:"absolute",top:"calc(100% + 6px)",right:0,zIndex:999}}>
       <CalendarDatePicker
         selected={customDates}
-        onChange={dates=>{ setCustomDates(dates); load(); }}
+        onChange={dates=>{ setCustomDates(dates); setShowDatePicker(false); loadWithParams(dates, range, selectedAgent); }}
         onClose={()=>setShowDatePicker(false)}
       />
     </div>
