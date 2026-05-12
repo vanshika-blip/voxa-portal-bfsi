@@ -1080,10 +1080,10 @@ function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
           <div className="t-kpis" style={{gridTemplateColumns:"repeat(5,1fr)"}}>
             {[
               {label:"Total Calls",value:s.totalCalls||grandCalls||0,color:"#0066b3"},
-              {label:"Qualified Leads",value:grandQL||s.qualifiedLeads||0,color:"#009149"},
+              {label:"Qualified Leads",value:s.qualifiedLeads||0,color:"#009149"},
               {label:"Conversion",value:(s.conversionRate||0)+"%",color:"#e2001a"},
-              {label:"Connected",value:grandConnected||s.connectedCount||0,color:"#0369a1"},
-              {label:"Interviews Lined Up",value:grandLineup||lineupCount,color:"#5b21b6",highlight:true},
+              {label:"Connected",value:s.connectedCount||0,color:"#0369a1"},
+              {label:"Interviews Lined Up",value:lineupCount,color:"#5b21b6",highlight:true},
             ].map(k=>(
               <div key={k.label} className="t-kpi" style={k.highlight?{background:"#f5f0ff"}:{}}>
                 <div className="t-kpi-accent" style={{background:k.color}}/>
