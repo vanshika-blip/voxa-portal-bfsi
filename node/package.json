@@ -1,0 +1,20 @@
+{
+  "name": "voxa-portal",
+  "version": "2.0.0",
+  "description": "Voxa Portal Node Server — all background jobs + archive API",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.2",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "googleapis": "^140.0.0",
+    "node-cron": "^3.0.3"
+  }
+}
