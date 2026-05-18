@@ -1841,8 +1841,12 @@ function CampaignsView({ agents, user, teams, onViewLeads }) {
     (async()=>{ setLoading(true); const r=await api("getCampaigns",{agentCode:selAgent}); setLoading(false);if(r.ok) {
   const seen = new Set();
   const unique = (r.campaigns||[]).filter(c => {
-    if (seen.has(c.requestId)) return false;
-    seen.add(c.requestId);
+    // Deduplicate by both requestId AND campaignName+triggeredAt to catch backend duplicates
+    const byId = c.requestId;
+    const byName = (c.campaignName||"") + "|" + (c.triggeredAt||"");
+    if (seen.has(byId) || seen.has(byName)) return false;
+    seen.add(byId);
+    if (byName !== "|") seen.add(byName);
     return true;
   });
   setRows(unique);
