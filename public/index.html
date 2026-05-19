@@ -347,7 +347,7 @@ input[type=checkbox]{accent-color:var(--black);cursor:pointer}
 <body>
 <div id="root"></div>
 <script type="text/babel" data-presets="react">
-const API_URL = "https://voxa-portal-bfsi.onrender.com/api";
+const API_URL = "https://voxa-portal-bfsi.onrender.com";
 
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
 const R = (typeof Recharts !== "undefined") ? Recharts : {};
@@ -3957,7 +3957,11 @@ function ManualTrackerView({ user }) {
   async function flushEmpty(id) {
     if (flushingRef.current.has(id)) return; // prevent re-entrancy / race
     const row = empties.find(r=>r._id===id);
-    if (!row||!row.name.trim()||!row.phone.trim()) return;
+    // Only save when the row is meaningfully complete:
+    // name + phone (required) + callStatus (signals the row is done)
+    if (!row) return;
+    if (!row.name.trim() || !row.phone.trim()) return;
+    if (!row.callStatus || !String(row.callStatus).trim()) return;
     flushingRef.current.add(id);
     _setSS(id,"saving");
     try {
@@ -4207,6 +4211,7 @@ function ManualTrackerView({ user }) {
                     {ss==="saving" && <Spin/>}
                     {ss==="ok"     && <span style={{color:"var(--green)",fontSize:14,lineHeight:1}}>✓</span>}
                     {!ss&&isDirty  && <span style={{color:"#f59e0b",fontSize:16,lineHeight:1}}>●</span>}
+                    {!ss&&!isSaved&&(row.name||row.phone)&&!(row.callStatus&&row.callStatus.trim()) && <span title="Fill Call Status to save" style={{color:"#94a3b8",fontSize:11,cursor:"default"}}>⏸</span>}
                   </td>
                 </tr>
               );
@@ -4226,7 +4231,7 @@ function ManualTrackerView({ user }) {
         <div style={{padding:"5px 12px",fontSize:10,fontFamily:"var(--fm)",color:"var(--muted)",background:"#fafafa",borderTop:"1px solid #eee",display:"flex",gap:16,flexWrap:"wrap"}}>
           <span>Tab — next cell</span>
           <span>Enter — next row</span>
-          <span>Saves on blur, Tab, or Enter</span>
+          <span>New rows save when Call Status is set · Existing rows save on blur</span>
           {Object.values(saveState).some(s=>s==="saving") && <span style={{color:"var(--blue)"}}>Saving…</span>}
         </div>
       </div>
@@ -4248,6 +4253,45 @@ function ManualTrackerView({ user }) {
 // ─────────────────────────────────────────────────────────────
 // AGENT INTEL VIEW (super admin only)
 // ─────────────────────────────────────────────────────────────
+
+// ─── Force Poll Button (super admin only) ────────────────────────────────────
+function ForcePollButton() {
+  const [status, setStatus] = useState("idle"); // idle | polling | done | error
+  const [msg, setMsg]       = useState("");
+
+  async function trigger() {
+    setStatus("polling"); setMsg("");
+    try {
+      const resp = await fetch(API_URL.replace(/\/+$/, "") + "/api/forcepoll", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session: localStorage.getItem("session") }),
+      });
+      const data = await resp.json();
+      if (data.ok) { setStatus("done"); setMsg(data.note || "Poll triggered!"); }
+      else { setStatus("error"); setMsg(data.message || data.error || "Failed"); }
+    } catch(e) { setStatus("error"); setMsg(e.message); }
+    setTimeout(() => setStatus("idle"), 6000);
+  }
+
+  const colors = { idle:"#6739b7", polling:"#888", done:"#009149", error:"#cc2222" };
+  const labels = { idle:"⚡ Force Poll", polling:"Polling…", done:"✓ Triggered", error:"✗ Failed" };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3}}>
+      <button
+        onClick={trigger}
+        disabled={status==="polling"}
+        style={{padding:"7px 16px",fontSize:11,fontFamily:"var(--fd)",fontWeight:700,
+          letterSpacing:".1em",textTransform:"uppercase",cursor:status==="polling"?"not-allowed":"pointer",
+          border:"1px solid rgba(255,255,255,.25)",borderRadius:3,
+          background:colors[status],color:"#fff",transition:"background .2s"}}
+      >{labels[status]}</button>
+      {msg && <span style={{fontSize:10,color:"rgba(255,255,255,.6)",fontFamily:"var(--fm)",maxWidth:200,textAlign:"right"}}>{msg}</span>}
+    </div>
+  );
+}
+
 function AgentIntelView({ user, agents }) {
   const [users, setUsers]                 = useState([]);
   const [campaigns, setCampaigns]         = useState([]);
@@ -4454,6 +4498,7 @@ function AgentIntelView({ user, agents }) {
             <span>·</span>
             <span>{users.filter(u=>u.role==="team_lead"||u.role==="individual_contributor").length} ICs/TLs</span>
           </div>
+          <ForcePollButton />
         </div>
       </div>
 
