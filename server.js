@@ -961,8 +961,14 @@ async function handleUpsertAgent(actor, body) {
   if (a.customVariables   !== undefined) merged.customVariables   = a.customVariables;
   if (a.resultSchema      !== undefined) merged.resultSchema      = a.resultSchema;
   if (a.active            !== undefined) merged.active            = !!a.active;
-  if (Array.isArray(a.qualificationValues)) merged.qualificationValues = a.qualificationValues.filter(Boolean);
-  if (Array.isArray(a.qualificationRules))  merged.qualificationRules  = a.qualificationRules;
+  // Defensively parse in case frontend sends as JSON string instead of array
+  let qRules = a.qualificationRules;
+  if (typeof qRules === 'string') { try { qRules = JSON.parse(qRules); } catch (_) { qRules = []; } }
+  if (Array.isArray(qRules)) merged.qualificationRules = qRules;
+
+  let qValues = a.qualificationValues;
+  if (typeof qValues === 'string') { try { qValues = JSON.parse(qValues); } catch (_) { qValues = []; } }
+  if (Array.isArray(qValues)) merged.qualificationValues = qValues.filter(Boolean);
   if (!merged.spreadsheetId) {
     const ssId = await createSpreadsheet(`Voxa Agent: ${merged.agentCode}`);
     if (SERVICE_EMAIL) await shareSpreadsheet(ssId, SERVICE_EMAIL, actor.email);

@@ -440,10 +440,10 @@ async function _pollAgent(agent, userRoleMap, triggerMap) {
 
   const rowPriority = (status, hasResult) => {
     if (status === 'COMPLETED' && !hasResult) return 0; // urgent — get eval data
-    if (status === 'IN_PROGRESS')             return 1;
-    if (status === 'INITIATED')               return 2;
-    if (status === 'SCHEDULED')               return 3; // check these → may have become NC/FAILED/COMPLETED
-    if (status === 'NOT_STARTED')             return 4;
+    if (status === 'IN_PROGRESS')             return 1; // call ongoing
+    if (status === 'NOT_STARTED')             return 2; // fires immediately on trigger
+    if (status === 'INITIATED')               return 3;
+    if (status === 'SCHEDULED')               return 4;
     return 99; // terminal status — skip
   };
 
@@ -477,10 +477,11 @@ async function _pollAgent(agent, userRoleMap, triggerMap) {
     const campaignDate  = triggeredAtMs ? istDateStr(new Date(triggeredAtMs)) : '';
     const isToday       = campaignDate === todayStr;
 
-    // SCHEDULED/NOT_STARTED: throttle ONLY for previous-day campaigns (sparse polling every ~20 min)
-    // Today's SCHEDULED/NOT_STARTED are always included so a just-triggered campaign isn't delayed.
-    if (priority >= 3 && !isToday) {
-      if ((_pollCycleCount % 10) !== (i % 10)) continue;
+    // SCHEDULED: throttle previous-day campaigns to every 20th cycle (~40 min)
+    // Today's SCHEDULED are always included so fresh triggers aren't delayed.
+    // NOT_STARTED is always included regardless of day (fires immediately on trigger).
+    if (priority === 4 && !isToday) {
+      if ((_pollCycleCount % 20) !== (i % 20)) continue;
     }
 
     candidates.push({ i, row, callId, status, reqId, priority, campaignDone, isToday, triggeredAtMs });
@@ -1462,6 +1463,122 @@ async function _seedMasterTracker(agent, createdCalls, requestId, triggeredBy) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// EOD SWEEP — runs daily at 9pm IST
+// For every active campaign (not COMPLETED in Campaign Tracker),
+// fetches ALL non-terminal rows with no cap — cleans up end-of-day stragglers
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function eodSweep() {
+  if (pollRunning) {
+    console.log('[eod] Poll running — will retry next trigger.');
+    return;
+  }
+  console.log('[eod] Starting end-of-day sweep...');
+  const agents = (await getAllAgents()).filter(a => a.active);
+  let totalFetched = 0, totalUpdated = 0;
+
+  for (const agent of agents) {
+    try {
+      const agentSsId = agent.spreadsheetId || MAIN_SS_ID;
+      const mtName    = agent.spreadsheetId ? AGT.MASTER_TRACKER : (agent.agentCode + AGT.MASTER_TRACKER);
+      const ctName    = agent.spreadsheetId ? AGT.CAMPAIGN_TRACKER : (agent.agentCode + AGT.CAMPAIGN_TRACKER);
+
+      // Find active (non-completed) campaigns
+      const { headers: ctH, rows: ctRows } = await readSheet(agentSsId, ctName);
+      const ctReqCol    = ctH.indexOf('Request ID');
+      const ctStatusCol = ctH.indexOf('Status');
+      const activeCampaigns = new Set();
+      if (ctReqCol >= 0 && ctStatusCol >= 0) {
+        ctRows.forEach(r => {
+          const rid = String(r[ctReqCol] || '').trim();
+          const st  = String(r[ctStatusCol] || '').toUpperCase();
+          if (rid && st !== 'COMPLETED') activeCampaigns.add(rid);
+        });
+      }
+      if (!activeCampaigns.size) continue;
+
+      const { headers: mtH, rows: mtRows } = await readSheet(agentSsId, mtName);
+      if (!mtH.length) continue;
+
+      const callIdCol  = mtH.indexOf('Call ID');
+      const statusCol  = mtH.indexOf('Status');
+      const reqIdCol   = mtH.indexOf('Request ID');
+      const resultFields = resultFieldNames(agent.resultSchema);
+      const customVars   = agent.customVariables || [];
+      if (callIdCol < 0 || statusCol < 0) continue;
+
+      const rowUpdates = [];
+
+      for (let i = 0; i < mtRows.length; i++) {
+        const row    = mtRows[i];
+        const callId = String(row[callIdCol] || '').trim();
+        if (!callId) continue;
+
+        const status = String(row[statusCol] || '').toUpperCase();
+        const reqId  = reqIdCol >= 0 ? String(row[reqIdCol] || '').trim() : '';
+
+        // Only rows belonging to active campaigns
+        if (reqId && !activeCampaigns.has(reqId)) continue;
+
+        // Skip terminal rows
+        if (status === 'NOT_CONNECTED' || status === 'FAILED' || status === 'CANCELLED') continue;
+
+        // Skip COMPLETED rows that already have result data
+        if (status === 'COMPLETED') {
+          const hasResult = resultFields.some(f => {
+            const col = mtH.indexOf('out.' + f);
+            return col >= 0 && String(row[col] || '').trim() !== '';
+          });
+          if (hasResult) continue;
+        }
+
+        totalFetched++;
+        const r = await getCall(callId);
+        if (!r.ok) continue;
+
+        const d         = r.data;
+        const newStatus = String(d.status || status).toUpperCase();
+        const result    = d.result || {};
+        const newRow    = [...row];
+        const setH = (name, val) => { const k = mtH.indexOf(name); if (k >= 0) newRow[k] = val; };
+
+        setH('Status',             newStatus);
+        setH('Duration (Minutes)', d.duration_minutes ?? 0);
+        setH('Duration (Seconds)', d.duration_seconds ?? 0);
+        setH('Started At',         d.started_at || '');
+        setH('Ended At',           d.ended_at   || '');
+        setH('Answered By',        d.answered_by || '');
+        setH('Engagement Status',  d.engagement_status || '');
+        setH('Call Ended By',      d.call_ended_by || '');
+        setH('Recording URL',      d.recording_url || '');
+        setH('Updated At',         new Date().toISOString());
+        customVars.forEach(cv => { if (d.custom_data?.[cv] !== undefined) setH('in.' + cv, d.custom_data[cv]); });
+        resultFields.forEach(f  => { setH('out.' + f, result[f] !== undefined ? result[f] : ''); });
+
+        rowUpdates.push({ rowIndex: i + 2, values: newRow });
+        totalUpdated++;
+        await sleep(150);
+      }
+
+      // Flush writes in batches of 100
+      if (rowUpdates.length) {
+        for (let i = 0; i < rowUpdates.length; i += 100) {
+          await batchWriteRows(agentSsId, mtName, rowUpdates.slice(i, i + 100));
+          if (i + 100 < rowUpdates.length) await sleep(500);
+        }
+        console.log(`[eod] ${agent.agentCode}: fetched=${rowUpdates.length} for ${activeCampaigns.size} active campaigns`);
+      }
+
+      await sleep(1500);
+    } catch (err) {
+      console.error(`[eod] Error on ${agent.agentCode}:`, err.message);
+    }
+  }
+
+  console.log(`[eod] Done — totalFetched=${totalFetched} totalUpdated=${totalUpdated}`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC API: read archived data from team spreadsheets
 // (called by server.js for archive API endpoints)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1562,7 +1679,12 @@ async function startPoller() {
     try { await processRetryQueue(); } catch (e) { console.error('[cron:retries]', e.message); }
   });
 
-  console.log('[poller] All 10 jobs scheduled ✓');
+  // 9pm IST = 15:30 UTC — end of day sweep, all active campaigns fully updated
+  cron.schedule('30 15 * * *', async () => {
+    try { await eodSweep(); } catch (e) { console.error('[cron:eod]', e.message); }
+  });
+
+  console.log('[poller] All 11 jobs scheduled ✓');
 
   // Run poll immediately on startup
   setTimeout(() => {
@@ -1582,6 +1704,7 @@ module.exports = {
   archiveManualTracker,
   processCallbackQueue,
   processRetryQueue,
+  eodSweep,
   getArchivedLeads,
   getArchivedMT,
   getArchivedManual,
