@@ -468,18 +468,64 @@ function RecBtn({ url }) {
   );
 }
 
+// ── Global date formatter — handles ISO, MM/DD/YYYY, DD/MM/YYYY, plain dates ──
+// Always outputs "DD Mon YYYY, HH:MM" in IST (Asia/Kolkata)
+function fmtDT(v, { dateOnly = false } = {}) {
+  if (!v && v !== 0) return "";
+  const s = String(v).trim();
+  if (!s) return "";
+
+  let d = null;
+
+  // ISO 8601: 2026-05-20T05:35:01.202Z  or  2026-05-20T10:35:01+05:30
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+    d = new Date(s);
+  }
+  // yyyy-MM-dd (no time)
+  else if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [yr, mo, dy] = s.split("-").map(Number);
+    d = new Date(yr, mo - 1, dy);
+  }
+  // MM/DD/YYYY or M/D/YYYY
+  else if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(s)) {
+    const parts = s.split(/[\/ ]/);
+    d = new Date(`${parts[2]}-${parts[0].padStart(2,"0")}-${parts[1].padStart(2,"0")}${parts[3] ? "T"+parts[3] : ""}`);
+  }
+  // Fallback
+  else {
+    d = new Date(s);
+  }
+
+  if (!d || isNaN(d.getTime())) return s;
+
+  // Format in IST
+  const IST = "Asia/Kolkata";
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const day   = Number(d.toLocaleDateString("en-IN",{day:"numeric",   timeZone:IST}));
+  const monI  = Number(d.toLocaleDateString("en-IN",{month:"numeric", timeZone:IST})) - 1;
+  const year  = Number(d.toLocaleDateString("en-IN",{year:"numeric",  timeZone:IST}));
+  const time  = d.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit",hour12:false,timeZone:IST});
+
+  const datePart = `${String(day).padStart(2,"0")} ${MONTHS[monI]} ${year}`;
+  if (dateOnly) return datePart;
+  // Only show time if there is a non-midnight time component
+  const hasTime = d.getUTCHours() !== 0 || d.getUTCMinutes() !== 0 || d.getUTCSeconds() !== 0;
+  return hasTime ? `${datePart}, ${time}` : datePart;
+}
+
 function DateCell({ value }) {
   if (!value) return <span style={{color:"#ccc"}}>—</span>;
-  try {
-    const d = new Date(value);
-    if (isNaN(d.getTime())) return <span className="date-cell">{value}</span>;
-    return (
-      <div className="date-cell">
-        <div>{d.toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})}</div>
-        <div style={{fontSize:9,marginTop:1}}>{d.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}</div>
-      </div>
-    );
-  } catch { return <span className="date-cell">{value}</span>; }
+  const formatted = fmtDT(value);
+  if (!formatted) return <span style={{color:"#ccc"}}>—</span>;
+  // Split on ", " to show date + time on two lines
+  const comma = formatted.indexOf(", ");
+  if (comma === -1) return <div className="date-cell"><div>{formatted}</div></div>;
+  return (
+    <div className="date-cell">
+      <div>{formatted.slice(0, comma)}</div>
+      <div style={{fontSize:9,marginTop:1}}>{formatted.slice(comma+2)}</div>
+    </div>
+  );
 }
 
 // ── REMARKS MODAL ──
@@ -997,7 +1043,7 @@ function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
   }
 
   useEffect(()=>{ setDashData(null); setUsageData(null); setMinutesData(null); loadWithParams(customDates, range, selectedAgent); },[range,selectedAgent,customDates.join(",")]);
-  useEffect(()=>{ const t=setInterval(load,5*60*1000); return()=>clearInterval(t); },[range,selectedAgent,customDates.join(",")]);
+  // Auto-refresh removed: data is served from GAS _Dashboard_Cache (refreshed every 15 min)
 
   if(!dashData||!usageData) return <div style={{display:"flex",justifyContent:"center",padding:60}}><Spin/></div>;
   const s = dashData.stats||{};
@@ -1038,7 +1084,7 @@ function DashboardView({ user, agents, selectedAgent, setSelectedAgent }) {
           <div className="t-mast-title">Dashboard</div>
           <div className="t-mast-sub" style={{display:"flex",alignItems:"center",gap:10}}>
             <span>{customDates.length>0?`${customDates.length} date${customDates.length>1?"s":""} selected`:range==="today"?"Today":range==="7d"?"Last 7 days":"Last 30 days"}</span>
-            <span className="refresh-badge"><span className="refresh-dot"/>Auto-refresh 5m</span>
+            
           </div>
         </div>
         <div className="t-mast-r">
@@ -1424,6 +1470,7 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
   const [lastRefresh, setLastRefresh] = useState(null);
   const [selTeam, setSelTeam] = useState("");
   const [tab, setTab] = useState("active");
+  const [completedRange, setCompletedRange] = useState("all"); // "7d"|"30d"|"all"
 
   const teamFilterEmails = useMemo(() => {
     if (!selTeam) return null;
@@ -1445,11 +1492,7 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
   }
 
   useEffect(()=>{ refresh(); },[selAgent, search, unassignedOnly, reqFilter]);
-  useEffect(()=>{
-    if(!selAgent) return;
-    const t = setInterval(()=>{ invalidateLeadCache(selAgent); refresh(); }, 5*60*1000);
-    return ()=>clearInterval(t);
-  },[selAgent, search, unassignedOnly, reqFilter]);
+  // Auto-refresh removed: use the manual Refresh button to reload leads
 
   const fixedCols = ["Callee Name","Mobile Number","Started At","Assigned To Email","Call Status","Feedback","Remarks","Recording URL"];
   const dateCols = headers.filter(h => isDateCol(h) && !fixedCols.includes(h));
@@ -1478,8 +1521,22 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
       if (cs === "Connected" && (!fb || CALLBACK_HINTS.some(k => fb.includes(k)))) return true;
       return false;
     }
-    return leads.filter(l => tab === "completed" ? isCompleted(l) : isActive(l));
-  }, [leads, tab]);
+    function parseLeadDate(l) {
+      const v = l["Started At"] || l["Date Added"] || l["Created At"] || "";
+      if (!v) return 0;
+      try { const d = new Date(v); return isNaN(d.getTime()) ? 0 : d.getTime(); } catch { return 0; }
+    }
+    let result = leads.filter(l => tab === "completed" ? isCompleted(l) : isActive(l));
+    // Date-range filter for completed tab
+    if (tab === "completed" && completedRange !== "all") {
+      const days = completedRange === "7d" ? 7 : 30;
+      const cutoff = Date.now() - days * 86400000;
+      result = result.filter(l => parseLeadDate(l) >= cutoff);
+    }
+    // Sort newest first
+    result = [...result].sort((a, b) => parseLeadDate(b) - parseLeadDate(a));
+    return result;
+  }, [leads, tab, completedRange]);
 
   const { filters, filtered: rawFiltered, colValues, setColFilter, clearFilters } = useTableFilters(tabFilteredLeads, shownHeaders);
   const hasFilters = Object.keys(filters).length > 0;
@@ -1584,7 +1641,7 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
           <div className="t-mast-title">Leads</div>
           <div className="t-mast-sub" style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
             <span>{filteredLeads.length} leads {hasFilters && `(filtered)`}</span>
-            <span className="refresh-badge"><span className="refresh-dot"/>Auto-refresh 5m</span>
+            
             {lastRefresh && <span style={{fontSize:9,color:"rgba(255,255,255,.3)"}}>Last: {lastRefresh.toLocaleTimeString()}</span>}
             {reqFilter && <>
               <span style={{fontFamily:"var(--fm)",fontSize:10,background:"rgba(255,255,255,.1)",padding:"1px 5px"}}>campaign: {reqFilter.slice(-12)}</span>
@@ -1601,6 +1658,15 @@ function LeadsView({ user, users, agents, teams, initialFilter, onClearFilter })
               style={{padding:"6px 16px",fontSize:11,fontFamily:"var(--fd)",fontWeight:700,letterSpacing:".1em",textTransform:"uppercase",cursor:"pointer",border:"1px solid rgba(255,255,255,.25)",background:tab==="completed"?"#ffffff":"transparent",color:tab==="completed"?"var(--black)":"rgba(255,255,255,.7)"}}
             >Completed <span style={{opacity:.6,marginLeft:4}}>{tabCounts.completed}</span></button>
           </div>
+          {tab==="completed" && (
+            <div style={{display:"flex",gap:0,marginTop:6}}>
+              {[{id:"7d",label:"Last 7 days"},{id:"30d",label:"Last 30 days"},{id:"all",label:"All time"}].map(t=>(
+                <button key={t.id} onClick={()=>setCompletedRange(t.id)} style={{padding:"3px 12px",fontSize:10,fontFamily:"var(--fd)",fontWeight:700,letterSpacing:".08em",textTransform:"uppercase",cursor:"pointer",border:"1px solid rgba(255,255,255,.2)",borderRight:"none",background:completedRange===t.id?"rgba(255,255,255,.18)":"transparent",color:"rgba(255,255,255,.75)"}}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="t-mast-r">
           {teams && teams.length>0 && (
@@ -1836,6 +1902,8 @@ function CampaignsView({ agents, user, teams, onViewLeads }) {
   const [rows,setRows]=useState([]); const [loading,setLoading]=useState(true);
   const [openCampaign,setOpenCampaign]=useState(null);
   const [campaignTab,setCampaignTab]=useState("qualified");
+  const [listTab, setListTab] = useState("active");   // "active" | "completed"
+  const [doneRange, setDoneRange] = useState("all"); // "7d"|"30d"|"all"
 
   useEffect(()=>{
     (async()=>{ setLoading(true); const r=await api("getCampaigns",{agentCode:selAgent}); setLoading(false);if(r.ok) {
@@ -1857,20 +1925,56 @@ function CampaignsView({ agents, user, teams, onViewLeads }) {
     return <CampaignDetail campaign={openCampaign} agents={agents} tab={campaignTab} setTab={setCampaignTab} onBack={()=>setOpenCampaign(null)} onViewLeads={onViewLeads}/>;
   }
 
-  const displayRows = selTeam
-    ? rows.filter(r => r.triggeredByTeam === selTeam)
-    : rows;
+  function campDate(c) {
+    const v = c.triggeredAt || "";
+    if (!v) return 0;
+    try { const d = new Date(v); return isNaN(d.getTime()) ? 0 : d.getTime(); } catch { return 0; }
+  }
 
-  const live=displayRows.filter(r=>r.status==="IN_PROGRESS").length;
-  const done=displayRows.filter(r=>r.status==="COMPLETED").length;
-  const totalQual=displayRows.reduce((a,r)=>a+(r.qualified||0),0);
+  const teamFiltered = selTeam ? rows.filter(r => r.triggeredByTeam === selTeam) : rows;
+
+  const activeCamps = teamFiltered
+    .filter(c => c.status === "IN_PROGRESS")
+    .sort((a,b) => campDate(b) - campDate(a));
+
+  const completedAll = teamFiltered
+    .filter(c => c.status !== "IN_PROGRESS")
+    .sort((a,b) => campDate(b) - campDate(a));
+
+  const completedCamps = doneRange === "all" ? completedAll : (() => {
+    const days = doneRange === "7d" ? 7 : 30;
+    const cutoff = Date.now() - days * 86400000;
+    return completedAll.filter(c => campDate(c) >= cutoff);
+  })();
+
+  const displayRows = listTab === "active" ? activeCamps : completedCamps;
+  const live = activeCamps.length;
+  const done = completedAll.length;
+  const totalQual = teamFiltered.reduce((a,r)=>a+(r.qualified||0),0);
 
   return (
     <div className="t-fade">
       <div className="t-mast">
         <div>
           <div className="t-mast-title">Campaigns</div>
-          <div className="t-mast-sub">{displayRows.length} campaigns · {live} running · {done} completed</div>
+          <div className="t-mast-sub">{teamFiltered.length} campaigns · {live} running · {done} completed</div>
+          <div style={{display:"flex",gap:0,marginTop:10}}>
+            <button onClick={()=>setListTab("active")} style={{padding:"6px 16px",fontSize:11,fontFamily:"var(--fd)",fontWeight:700,letterSpacing:".1em",textTransform:"uppercase",cursor:"pointer",border:"1px solid rgba(255,255,255,.25)",borderRight:"none",background:listTab==="active"?"#ffffff":"transparent",color:listTab==="active"?"var(--black)":"rgba(255,255,255,.7)"}}>
+              Active <span style={{opacity:.6,marginLeft:4}}>{live}</span>
+            </button>
+            <button onClick={()=>setListTab("completed")} style={{padding:"6px 16px",fontSize:11,fontFamily:"var(--fd)",fontWeight:700,letterSpacing:".1em",textTransform:"uppercase",cursor:"pointer",border:"1px solid rgba(255,255,255,.25)",background:listTab==="completed"?"#ffffff":"transparent",color:listTab==="completed"?"var(--black)":"rgba(255,255,255,.7)"}}>
+              Completed <span style={{opacity:.6,marginLeft:4}}>{done}</span>
+            </button>
+          </div>
+          {listTab==="completed" && (
+            <div style={{display:"flex",gap:0,marginTop:6}}>
+              {[{id:"7d",label:"Last 7 days"},{id:"30d",label:"Last 30 days"},{id:"all",label:"All time"}].map(t=>(
+                <button key={t.id} onClick={()=>setDoneRange(t.id)} style={{padding:"3px 12px",fontSize:10,fontFamily:"var(--fd)",fontWeight:700,letterSpacing:".08em",textTransform:"uppercase",cursor:"pointer",border:"1px solid rgba(255,255,255,.2)",borderRight:"none",background:doneRange===t.id?"rgba(255,255,255,.18)":"transparent",color:"rgba(255,255,255,.75)"}}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="t-mast-r">
           <AgentPicker agents={agents} value={selAgent} onChange={setSelAgent} allowAll/>
@@ -1883,7 +1987,7 @@ function CampaignsView({ agents, user, teams, onViewLeads }) {
         </div>
       )}
       <div className="t-kpis" style={{gridTemplateColumns:"repeat(4,1fr)"}}>
-        {[{label:"Running",value:live,color:"#e2001a"},{label:"Completed",value:done,color:"#009149"},{label:"Total Candidates",value:displayRows.reduce((a,r)=>a+(r.contactsCount||0),0),color:"#0066b3"},{label:"Total Qualified",value:totalQual,color:"#ffc600"}].map(k=>(
+        {[{label:"Running",value:live,color:"#e2001a"},{label:"Completed",value:done,color:"#009149"},{label:"Total Candidates",value:teamFiltered.reduce((a,r)=>a+(r.contactsCount||0),0),color:"#0066b3"},{label:"Total Qualified",value:totalQual,color:"#ffc600"}].map(k=>(
           <div key={k.label} className="t-kpi">
             <div className="t-kpi-accent" style={{background:k.color}}/>
             <div className="t-kpi-label">{k.label}</div>
@@ -1893,7 +1997,7 @@ function CampaignsView({ agents, user, teams, onViewLeads }) {
       </div>
       <div style={{padding:16,background:"var(--bg)"}}>
         {loading ? <div style={{padding:60,textAlign:"center"}}><Spin/></div> : displayRows.length===0 ? (
-          <div className="t-empty">No campaigns yet{selTeam?" for this team":""}.</div>
+          <div className="t-empty">No {listTab==="active"?"active":"completed"} campaigns{selTeam?" for this team":""}.</div>
         ) : displayRows.map(c=>{
           const pct = c.contactsCount>0 ? Math.round(((c.completed||0)+(c.notConnected||0)+(c.failed||0))/c.contactsCount*100) : 0;
           const isLive = c.status==="IN_PROGRESS";
@@ -1908,7 +2012,7 @@ function CampaignsView({ agents, user, teams, onViewLeads }) {
                     {c.triggeredByTeam && <span className="t-pill t-pill-blue">{c.triggeredByTeam}</span>}
                   </div>
                   <div style={{fontFamily:"var(--fm)",fontSize:10,color:"var(--muted)",marginTop:2}}>
-                    {c.agentName||c.agentCode} · {c.triggeredBy} · {c.triggeredAt?new Date(c.triggeredAt).toLocaleString():""}
+                    {c.agentName||c.agentCode} · {c.triggeredBy} · {c.triggeredAt ? fmtDT(c.triggeredAt) : ""}
                   </div>
                   <div style={{marginTop:6}}>
                     <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"var(--muted)",marginBottom:2,fontFamily:"var(--fm)"}}>
@@ -1950,7 +2054,7 @@ function CampaignDetail({ campaign, agents, tab, setTab, onBack, onViewLeads }) 
             <div className="t-mast-title">{campaign.campaignName||campaign.requestId.slice(-12)}</div>
             <StatusPill status={campaign.status}/>
           </div>
-          <div className="t-mast-sub">{campaign.agentName||campaign.agentCode} · {campaign.triggeredBy} · {campaign.triggeredAt?new Date(campaign.triggeredAt).toLocaleString():""}</div>
+          <div className="t-mast-sub">{campaign.agentName||campaign.agentCode} · {campaign.triggeredBy} · {campaign.triggeredAt ? fmtDT(campaign.triggeredAt) : ""}</div>
         </div>
         <div className="c-card-stats" style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:4,margin:0}}>
           {[{l:"Contacts",v:campaign.contactsCount},{l:"Completed",v:campaign.completed||0},{l:"Not Conn",v:campaign.notConnected||0},{l:"Failed",v:campaign.failed||0},{l:"Qualified",v:campaign.qualified||0,h:true},{l:"Mins",v:campaign.actualMinutes||0}].map(s=>(
@@ -2083,7 +2187,7 @@ function CampaignMasterTab({ campaign }) {
     if(h.startsWith("out.")||h.startsWith("in.")) return <div className="out-cell" title={strVal}>{strVal}</div>;
     if(h==="Status") return <StatusPill status={strVal}/>;
     if(h==="Call ID"||h==="Mobile Number") return <span className="t-mono" style={{fontSize:10}}>{strVal}</span>;
-    if(h==="Started At"||h==="Ended At") return <span style={{fontSize:10,fontFamily:"var(--fm)",color:"var(--muted)"}}>{strVal?new Date(strVal).toLocaleString():""}</span>;
+    if(h==="Started At"||h==="Ended At") return <span style={{fontSize:10,fontFamily:"var(--fm)",color:"var(--muted)"}}>{strVal?fmtDT(strVal):""}</span>;
     return <span style={{fontSize:12}}>{strVal}</span>;
   }
 
@@ -2274,6 +2378,8 @@ function AgentsView({ onChange, users }) {
                             <span className="t-mono" style={{fontSize:10,color:"var(--blue)"}}>{r.field}</span>
                             {r.keywords?.length>0 ? r.keywords.slice(0,3).map(k=><span key={k} className="t-pill t-pill-blue" style={{fontSize:8,marginLeft:3}}>~{k}</span>) : <span style={{color:"var(--muted)",fontSize:10}}> = any</span>}
                             {r.keywords?.length>3 && <span style={{fontSize:9,color:"var(--muted)"}}>+{r.keywords.length-3}</span>}
+                            {r.excludeKeywords?.length>0 && r.excludeKeywords.slice(0,2).map(k=><span key={k} style={{fontSize:8,marginLeft:3,background:"#fee2e2",color:"#991b1b",padding:"1px 4px",borderRadius:3}}>✗{k}</span>)}
+                            {r.excludeKeywords?.length>2 && <span style={{fontSize:9,color:"#dc2626"}}>+{r.excludeKeywords.length-2} excl</span>}
                           </div>
                         ))}
                       </td>
@@ -2302,30 +2408,38 @@ function AgentEditModal({ agent, onSave, onClose }) {
   const [qualRules, setQualRules] = useState(() => {
     const rules = {};
     if (agent.qualificationRules && Array.isArray(agent.qualificationRules) && agent.qualificationRules.length) {
-      agent.qualificationRules.forEach(r => { if(r.field) rules[r.field] = r.keywords || []; });
+      agent.qualificationRules.forEach(r => { if(r.field) rules[r.field] = { keywords: r.keywords||[], excludeKeywords: r.excludeKeywords||[] }; });
     } else if (agent.qualificationField) {
       const kws = agent.qualificationValues?.length ? [...agent.qualificationValues] : agent.qualificationValue ? [agent.qualificationValue] : [];
-      rules[agent.qualificationField] = kws;
+      rules[agent.qualificationField] = { keywords: kws, excludeKeywords: [] };
     }
     return rules;
   });
   const [kwInputs, setKwInputs] = useState({});
+  const [exInputs, setExInputs] = useState({});
   const resultFields = useMemo(() => {
     const s = agent.resultSchema || {};
     if (s.properties) return Object.keys(s.properties);
     return Object.keys(s).filter(k => k !== "type" && k !== "required");
   }, [agent.resultSchema]);
   const selectedFields = Object.keys(qualRules);
-  function toggleField(field) { setQualRules(prev => { const next = {...prev}; if (next[field] !== undefined) { delete next[field]; } else { next[field] = []; } return next; }); }
+  function toggleField(field) { setQualRules(prev => { const next = {...prev}; if (next[field] !== undefined) { delete next[field]; } else { next[field] = {keywords:[],excludeKeywords:[]}; } return next; }); }
   function addKeyword(field) {
     const kw = (kwInputs[field] || "").trim();
     if (!kw) return;
-    setQualRules(prev => { const existing = prev[field] || []; if (existing.map(k=>k.toLowerCase()).includes(kw.toLowerCase())) return prev; return {...prev, [field]: [...existing, kw]}; });
+    setQualRules(prev => { const existing = prev[field]?.keywords||[]; if (existing.map(k=>k.toLowerCase()).includes(kw.toLowerCase())) return prev; return {...prev, [field]: {...(prev[field]||{keywords:[],excludeKeywords:[]}), keywords: [...existing, kw]}}; });
     setKwInputs(prev => ({...prev, [field]: ""}));
   }
-  function removeKeyword(field, kw) { setQualRules(prev => ({...prev, [field]: (prev[field]||[]).filter(k=>k!==kw)})); }
+  function removeKeyword(field, kw) { setQualRules(prev => ({...prev, [field]: {...prev[field], keywords:(prev[field]?.keywords||[]).filter(k=>k!==kw)}})); }
+  function addExKeyword(field) {
+    const kw = (exInputs[field] || "").trim();
+    if (!kw) return;
+    setQualRules(prev => { const existing = prev[field]?.excludeKeywords||[]; if (existing.map(k=>k.toLowerCase()).includes(kw.toLowerCase())) return prev; return {...prev, [field]: {...(prev[field]||{keywords:[],excludeKeywords:[]}), excludeKeywords: [...existing, kw]}}; });
+    setExInputs(prev => ({...prev, [field]: ""}));
+  }
+  function removeExKeyword(field, kw) { setQualRules(prev => ({...prev, [field]: {...prev[field], excludeKeywords:(prev[field]?.excludeKeywords||[]).filter(k=>k!==kw)}})); }
   function doSave() {
-    const rules = Object.entries(qualRules).filter(([f]) => f).map(([field, keywords]) => ({field, keywords}));
+    const rules = Object.entries(qualRules).filter(([f]) => f).map(([field, v]) => ({field, keywords: v.keywords||[], excludeKeywords: v.excludeKeywords||[]}));
     const firstField = rules[0]?.field || "";
     const allKeywords = rules.flatMap(r => r.keywords);
     onSave({...a, qualificationRules: rules, qualificationField: firstField, qualificationValues: allKeywords, qualificationValue: allKeywords[0] || ""});
@@ -2359,14 +2473,22 @@ function AgentEditModal({ agent, onSave, onClose }) {
               </div>
             )}
             {selectedFields.map(field=>{
-              const keywords = qualRules[field]||[];
+              const keywords = qualRules[field]?.keywords||[];
+              const exKeywords = qualRules[field]?.excludeKeywords||[];
               return (
                 <div key={field} style={{border:"1.5px solid #0066b3",padding:"8px 10px",marginBottom:8}}>
                   <div style={{fontFamily:"var(--fm)",fontSize:11,fontWeight:700,color:"var(--blue)",marginBottom:6}}>{field}</div>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:6}}>{keywords.map(kw=><span key={kw} className="t-kwtag">~{kw}<button className="t-kwtag-rm" onClick={()=>removeKeyword(field,kw)}>×</button></span>)}</div>
-                  <div style={{display:"flex",gap:6}}>
-                    <input className="t-input" style={{flex:1,fontSize:11,padding:"5px 8px"}} value={kwInputs[field]||""} onChange={e=>setKwInputs(prev=>({...prev,[field]:e.target.value}))} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addKeyword(field);}}} placeholder="Add keyword…"/>
+                  <div style={{fontSize:9,fontFamily:"var(--fd)",fontWeight:700,color:"#059669",letterSpacing:".1em",marginBottom:3}}>INCLUDE — any match qualifies</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:5}}>{keywords.map(kw=><span key={kw} className="t-kwtag">~{kw}<button className="t-kwtag-rm" onClick={()=>removeKeyword(field,kw)}>×</button></span>)}{keywords.length===0&&<span style={{fontSize:10,color:"var(--muted)",fontStyle:"italic"}}>Any non-empty value qualifies</span>}</div>
+                  <div style={{display:"flex",gap:6,marginBottom:8}}>
+                    <input className="t-input" style={{flex:1,fontSize:11,padding:"5px 8px"}} value={kwInputs[field]||""} onChange={e=>setKwInputs(prev=>({...prev,[field]:e.target.value}))} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addKeyword(field);}}} placeholder="Add include keyword…"/>
                     <button className="t-btn t-btn-black t-btn-sm" onClick={()=>addKeyword(field)}>+ Add</button>
+                  </div>
+                  <div style={{fontSize:9,fontFamily:"var(--fd)",fontWeight:700,color:"#dc2626",letterSpacing:".1em",marginBottom:3}}>EXCLUDE — any match disqualifies</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:5}}>{exKeywords.map(kw=><span key={kw} style={{display:"inline-flex",alignItems:"center",gap:3,background:"#fee2e2",color:"#991b1b",padding:"2px 7px",fontSize:10,fontFamily:"var(--fm)"}}>✗{kw}<button style={{background:"none",border:"none",cursor:"pointer",color:"#991b1b",fontSize:12,padding:"0 0 0 2px",lineHeight:1}} onClick={()=>removeExKeyword(field,kw)}>×</button></span>)}{exKeywords.length===0&&<span style={{fontSize:10,color:"var(--muted)",fontStyle:"italic"}}>No exclusions</span>}</div>
+                  <div style={{display:"flex",gap:6}}>
+                    <input className="t-input" style={{flex:1,fontSize:11,padding:"5px 8px",borderColor:"#fca5a5"}} value={exInputs[field]||""} onChange={e=>setExInputs(prev=>({...prev,[field]:e.target.value}))} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addExKeyword(field);}}} placeholder="Add exclude keyword… (e.g. not eligible)"/>
+                    <button className="t-btn t-btn-sm" style={{background:"#fee2e2",color:"#991b1b",border:"1.5px solid #fca5a5",padding:"4px 10px",fontSize:11,fontFamily:"var(--fd)",fontWeight:700,cursor:"pointer"}} onClick={()=>addExKeyword(field)}>✗ Add</button>
                   </div>
                 </div>
               );
@@ -2619,7 +2741,7 @@ const [addedAgentForQual, setAddedAgentForQual] = useState(null);
 
   async function doSave(form, qualRules) {
     setSaving(true); setMsg({type:"",text:""});
-    const rules = Object.entries(qualRules).filter(([f])=>f).map(([field,keywords])=>({field,keywords}));
+    const rules = Object.entries(qualRules).filter(([f])=>f).map(([field,v])=>({field,keywords:v.keywords||[],excludeKeywords:v.excludeKeywords||[]}));
     const firstField = rules[0]?.field||"";
     const allKeywords = rules.flatMap(r=>r.keywords);
     const resultSchema = {};
@@ -2790,21 +2912,24 @@ function TLQualEditor({ agent, onBack, onSaved }) {
 
   const [qualRules, setQualRules] = useState(()=>{
     const rules={};
-    if(agent?.qualificationRules?.length){ agent.qualificationRules.forEach(r=>{ if(r.field) rules[r.field]=r.keywords||[]; }); }
-    else if(agent?.qualificationField){ rules[agent.qualificationField]=agent.qualificationValues||[]; }
+    if(agent?.qualificationRules?.length){ agent.qualificationRules.forEach(r=>{ if(r.field) rules[r.field]={keywords:r.keywords||[],excludeKeywords:r.excludeKeywords||[]}; }); }
+    else if(agent?.qualificationField){ rules[agent.qualificationField]={keywords:agent.qualificationValues||[],excludeKeywords:[]}; }
     return rules;
   });
   const [kwInputs,setKwInputs]=useState({});
+  const [exInputs,setExInputs]=useState({});
   const [saving,setSaving]=useState(false);
   const [msg,setMsg]=useState({type:"",text:""});
 
-  function toggleField(f){ setQualRules(p=>{ const n={...p}; if(n[f]!==undefined)delete n[f]; else n[f]=[]; return n; }); }
-  function addKw(f){ const kw=(kwInputs[f]||"").trim(); if(!kw)return; setQualRules(p=>({...p,[f]:[...(p[f]||[]),kw]})); setKwInputs(p=>({...p,[f]:""})); }
-  function removeKw(f,kw){ setQualRules(p=>({...p,[f]:(p[f]||[]).filter(k=>k!==kw)})); }
+  function toggleField(f){ setQualRules(p=>{ const n={...p}; if(n[f]!==undefined)delete n[f]; else n[f]={keywords:[],excludeKeywords:[]}; return n; }); }
+  function addKw(f){ const kw=(kwInputs[f]||"").trim(); if(!kw)return; setQualRules(p=>({...p,[f]:{...(p[f]||{keywords:[],excludeKeywords:[]}),keywords:[...(p[f]?.keywords||[]),kw]}})); setKwInputs(p=>({...p,[f]:""})); }
+  function removeKw(f,kw){ setQualRules(p=>({...p,[f]:{...p[f],keywords:(p[f]?.keywords||[]).filter(k=>k!==kw)}})); }
+  function addExKw(f){ const kw=(exInputs[f]||"").trim(); if(!kw)return; setQualRules(p=>({...p,[f]:{...(p[f]||{keywords:[],excludeKeywords:[]}),excludeKeywords:[...(p[f]?.excludeKeywords||[]),kw]}})); setExInputs(p=>({...p,[f]:""})); }
+  function removeExKw(f,kw){ setQualRules(p=>({...p,[f]:{...p[f],excludeKeywords:(p[f]?.excludeKeywords||[]).filter(k=>k!==kw)}})); }
 
   async function save(){
     setSaving(true); setMsg({type:"",text:""});
-    const rules=Object.entries(qualRules).filter(([f])=>f).map(([field,keywords])=>({field,keywords}));
+    const rules=Object.entries(qualRules).filter(([f])=>f).map(([field,v])=>({field,keywords:v.keywords||[],excludeKeywords:v.excludeKeywords||[]}));
     const r=await api("upsertMyAgent",{agent:{agentCode:agent.agentCode,agentId:agent.agentId,qualificationRules:rules,qualificationField:rules[0]?.field||"",qualificationValues:rules.flatMap(r=>r.keywords),qualificationValue:rules.flatMap(r=>r.keywords)[0]||""}});
     setSaving(false);
     if(!r.ok){ setMsg({type:"error",text:r.message||r.error}); return; }
@@ -2838,17 +2963,28 @@ setMsg({type:"success",text:"Rules saved!"}); setTimeout(onSaved,900);
                 </div>
               </div>
               {Object.keys(qualRules).map(field=>{
-                const kws=qualRules[field]||[];
+                const kws=qualRules[field]?.keywords||[];
+                const exKws=qualRules[field]?.excludeKeywords||[];
                 return (
                   <div key={field} style={{border:"1.5px solid #0066b3",padding:"12px 14px",marginBottom:12,background:"#f0f8ff"}}>
-                    <div style={{fontFamily:"var(--fm)",fontSize:13,fontWeight:700,color:"var(--blue)",marginBottom:6}}>{field}</div>
-                    <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:8}}>
+                    <div style={{fontFamily:"var(--fm)",fontSize:13,fontWeight:700,color:"var(--blue)",marginBottom:8}}>{field}</div>
+                    <div style={{fontSize:9,fontFamily:"var(--fd)",fontWeight:700,color:"#059669",letterSpacing:".1em",marginBottom:3}}>INCLUDE — any match qualifies</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:6}}>
                       {kws.map(kw=><span key={kw} className="t-kwtag">~{kw}<button className="t-kwtag-rm" onClick={()=>removeKw(field,kw)}>×</button></span>)}
                       {kws.length===0 && <span style={{fontSize:11,color:"var(--muted)",fontStyle:"italic"}}>Any non-empty value qualifies</span>}
                     </div>
-                    <div style={{display:"flex",gap:6}}>
-                      <input className="t-input" style={{flex:1,fontSize:12,padding:"6px 10px"}} value={kwInputs[field]||""} placeholder="Add keyword…" onChange={e=>setKwInputs(p=>({...p,[field]:e.target.value}))} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addKw(field);}}}/>
+                    <div style={{display:"flex",gap:6,marginBottom:10}}>
+                      <input className="t-input" style={{flex:1,fontSize:12,padding:"6px 10px"}} value={kwInputs[field]||""} placeholder="Add include keyword…" onChange={e=>setKwInputs(p=>({...p,[field]:e.target.value}))} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addKw(field);}}}/>
                       <button className="t-btn t-btn-black t-btn-sm" onClick={()=>addKw(field)}>+ Add</button>
+                    </div>
+                    <div style={{fontSize:9,fontFamily:"var(--fd)",fontWeight:700,color:"#dc2626",letterSpacing:".1em",marginBottom:3}}>EXCLUDE — any match disqualifies</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:6}}>
+                      {exKws.map(kw=><span key={kw} style={{display:"inline-flex",alignItems:"center",gap:3,background:"#fee2e2",color:"#991b1b",padding:"3px 8px",fontSize:11,fontFamily:"var(--fm)"}}>✗{kw}<button style={{background:"none",border:"none",cursor:"pointer",color:"#991b1b",fontSize:13,padding:"0 0 0 2px",lineHeight:1}} onClick={()=>removeExKw(field,kw)}>×</button></span>)}
+                      {exKws.length===0 && <span style={{fontSize:11,color:"var(--muted)",fontStyle:"italic"}}>No exclusions</span>}
+                    </div>
+                    <div style={{display:"flex",gap:6}}>
+                      <input className="t-input" style={{flex:1,fontSize:12,padding:"6px 10px",borderColor:"#fca5a5"}} value={exInputs[field]||""} placeholder="Add exclude keyword… (e.g. not eligible)" onChange={e=>setExInputs(p=>({...p,[field]:e.target.value}))} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addExKw(field);}}}/>
+                      <button className="t-btn t-btn-sm" style={{background:"#fee2e2",color:"#991b1b",border:"1.5px solid #fca5a5",padding:"5px 12px",fontSize:12,fontFamily:"var(--fd)",fontWeight:700,cursor:"pointer"}} onClick={()=>addExKw(field)}>✗ Add</button>
                     </div>
                   </div>
                 );
@@ -2882,14 +3018,17 @@ function TLAddByIdView({ onBack, onAdd, saving, msg, addedAgent }) {
     return Object.keys(s).filter(k=>k!=="type"&&k!=="required");
   },[addedAgent]);
 
-  function toggleQF(f){ setQualRules(p=>{ const n={...p}; if(n[f]!==undefined)delete n[f]; else n[f]=[]; return n; }); }
-  function addKw(f){ const kw=(kwInputs[f]||"").trim(); if(!kw)return; setQualRules(p=>({...p,[f]:[...(p[f]||[]),kw]})); setKwInputs(p=>({...p,[f]:""})); }
-  function rmKw(f,kw){ setQualRules(p=>({...p,[f]:(p[f]||[]).filter(k=>k!==kw)})); }
+  function toggleQF(f){ setQualRules(p=>{ const n={...p}; if(n[f]!==undefined)delete n[f]; else n[f]={keywords:[],excludeKeywords:[]}; return n; }); }
+  function addKw(f){ const kw=(kwInputs[f]||"").trim(); if(!kw)return; setQualRules(p=>({...p,[f]:{...(p[f]||{keywords:[],excludeKeywords:[]}),keywords:[...(p[f]?.keywords||[]),kw]}})); setKwInputs(p=>({...p,[f]:""})); }
+  function rmKw(f,kw){ setQualRules(p=>({...p,[f]:{...p[f],keywords:(p[f]?.keywords||[]).filter(k=>k!==kw)}})); }
+  const [exInputs, setExInputs] = useState({});
+  function addExKwById(f){ const kw=(exInputs[f]||"").trim(); if(!kw)return; setQualRules(p=>({...p,[f]:{...(p[f]||{keywords:[],excludeKeywords:[]}),excludeKeywords:[...(p[f]?.excludeKeywords||[]),kw]}})); setExInputs(p=>({...p,[f]:""})); }
+  function rmExKwById(f,kw){ setQualRules(p=>({...p,[f]:{...p[f],excludeKeywords:(p[f]?.excludeKeywords||[]).filter(k=>k!==kw)}})); }
 
   async function saveQualRules(){
     if(!addedAgent) return;
     setSavingQual(true); setQualMsg({type:"",text:""});
-    const rules = Object.entries(qualRules).filter(([f])=>f).map(([field,keywords])=>({field,keywords}));
+    const rules = Object.entries(qualRules).filter(([f])=>f).map(([field,v])=>({field,keywords:v.keywords||[],excludeKeywords:v.excludeKeywords||[]}));
     const r = await api("upsertMyAgent",{agent:{agentCode:addedAgent.agentCode,agentId:addedAgent.agentId,qualificationRules:rules,qualificationField:rules[0]?.field||"",qualificationValues:rules.flatMap(r=>r.keywords),qualificationValue:rules.flatMap(r=>r.keywords)[0]||""}});
     setSavingQual(false);
     if(!r.ok){ setQualMsg({type:"error",text:r.message||r.error}); return; }
@@ -2953,17 +3092,28 @@ function TLAddByIdView({ onBack, onAdd, saving, msg, addedAgent }) {
                 })}
               </div>
               {Object.keys(qualRules).map(field=>{
-                const kws=qualRules[field]||[];
+                const kws=qualRules[field]?.keywords||[];
+                const exKws=qualRules[field]?.excludeKeywords||[];
                 return (
                   <div key={field} style={{border:"1.5px solid #0066b3",padding:"11px 13px",marginBottom:10,background:"#f0f8ff"}}>
                     <div style={{fontFamily:"var(--fm)",fontSize:12,fontWeight:700,color:"var(--blue)",marginBottom:6}}>{field}</div>
-                    <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:7}}>
+                    <div style={{fontSize:9,fontFamily:"var(--fd)",fontWeight:700,color:"#059669",letterSpacing:".1em",marginBottom:3}}>INCLUDE — any match qualifies</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:5}}>
                       {kws.map(kw=><span key={kw} className="t-kwtag">~{kw}<button className="t-kwtag-rm" onClick={()=>rmKw(field,kw)}>×</button></span>)}
                       {kws.length===0&&<span style={{fontSize:10,color:"var(--muted)",fontStyle:"italic"}}>Any non-empty value qualifies</span>}
                     </div>
-                    <div style={{display:"flex",gap:6}}>
-                      <input className="t-input" style={{flex:1,fontSize:11,padding:"5px 8px"}} value={kwInputs[field]||""} placeholder="Add keyword (e.g. yes, interested)…" onChange={e=>setKwInputs(p=>({...p,[field]:e.target.value}))} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addKw(field);}}}/>
+                    <div style={{display:"flex",gap:6,marginBottom:8}}>
+                      <input className="t-input" style={{flex:1,fontSize:11,padding:"5px 8px"}} value={kwInputs[field]||""} placeholder="Add include keyword (e.g. yes, interested)…" onChange={e=>setKwInputs(p=>({...p,[field]:e.target.value}))} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addKw(field);}}}/>
                       <button className="t-btn t-btn-black t-btn-sm" onClick={()=>addKw(field)}>+ Add</button>
+                    </div>
+                    <div style={{fontSize:9,fontFamily:"var(--fd)",fontWeight:700,color:"#dc2626",letterSpacing:".1em",marginBottom:3}}>EXCLUDE — any match disqualifies</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:5}}>
+                      {exKws.map(kw=><span key={kw} style={{display:"inline-flex",alignItems:"center",gap:3,background:"#fee2e2",color:"#991b1b",padding:"2px 7px",fontSize:10,fontFamily:"var(--fm)"}}>✗{kw}<button style={{background:"none",border:"none",cursor:"pointer",color:"#991b1b",fontSize:12,padding:"0 0 0 2px",lineHeight:1}} onClick={()=>rmExKwById(field,kw)}>×</button></span>)}
+                      {exKws.length===0&&<span style={{fontSize:10,color:"var(--muted)",fontStyle:"italic"}}>No exclusions</span>}
+                    </div>
+                    <div style={{display:"flex",gap:6}}>
+                      <input className="t-input" style={{flex:1,fontSize:11,padding:"5px 8px",borderColor:"#fca5a5"}} value={exInputs[field]||""} placeholder="Add exclude keyword… (e.g. not eligible)" onChange={e=>setExInputs(p=>({...p,[field]:e.target.value}))} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addExKwById(field);}}}/>
+                      <button className="t-btn t-btn-sm" style={{background:"#fee2e2",color:"#991b1b",border:"1.5px solid #fca5a5",padding:"4px 10px",fontSize:11,fontFamily:"var(--fd)",fontWeight:700,cursor:"pointer"}} onClick={()=>addExKwById(field)}>✗ Add</button>
                     </div>
                   </div>
                 );
@@ -3002,16 +3152,19 @@ function TLAgentWizard({ user, editAgent, onSave, onBack, saving, msg, setMsg })
   const initQR = ()=>{
     if(!editAgent) return {};
     const rules={};
-    if(editAgent.qualificationRules?.length){ editAgent.qualificationRules.forEach(r=>{ if(r.field) rules[r.field]=r.keywords||[]; }); }
-    else if(editAgent.qualificationField){ rules[editAgent.qualificationField]=editAgent.qualificationValues||[]; }
+    if(editAgent.qualificationRules?.length){ editAgent.qualificationRules.forEach(r=>{ if(r.field) rules[r.field]={keywords:r.keywords||[],excludeKeywords:r.excludeKeywords||[]}; }); }
+    else if(editAgent.qualificationField){ rules[editAgent.qualificationField]={keywords:editAgent.qualificationValues||[],excludeKeywords:[]}; }
     return rules;
   };
   const [qualRules,setQualRules]=useState(initQR);
   const [kwInputs,setKwInputs]=useState({});
+  const [exInputs,setExInputs]=useState({});
 
-  function toggleQF(f){ setQualRules(p=>{ const n={...p}; if(n[f]!==undefined)delete n[f]; else n[f]=[]; return n; }); }
-  function addKw2(f){ const kw=(kwInputs[f]||"").trim(); if(!kw)return; setQualRules(p=>({...p,[f]:[...(p[f]||[]),kw]})); setKwInputs(p=>({...p,[f]:""})); }
-  function rmKw(f,kw){ setQualRules(p=>({...p,[f]:(p[f]||[]).filter(k=>k!==kw)})); }
+  function toggleQF(f){ setQualRules(p=>{ const n={...p}; if(n[f]!==undefined)delete n[f]; else n[f]={keywords:[],excludeKeywords:[]}; return n; }); }
+  function addKw2(f){ const kw=(kwInputs[f]||"").trim(); if(!kw)return; setQualRules(p=>({...p,[f]:{...(p[f]||{keywords:[],excludeKeywords:[]}),keywords:[...(p[f]?.keywords||[]),kw]}})); setKwInputs(p=>({...p,[f]:""})); }
+  function rmKw(f,kw){ setQualRules(p=>({...p,[f]:{...p[f],keywords:(p[f]?.keywords||[]).filter(k=>k!==kw)}})); }
+  function addExKw2(f){ const kw=(exInputs[f]||"").trim(); if(!kw)return; setQualRules(p=>({...p,[f]:{...(p[f]||{keywords:[],excludeKeywords:[]}),excludeKeywords:[...(p[f]?.excludeKeywords||[]),kw]}})); setExInputs(p=>({...p,[f]:""})); }
+  function rmExKw(f,kw){ setQualRules(p=>({...p,[f]:{...p[f],excludeKeywords:(p[f]?.excludeKeywords||[]).filter(k=>k!==kw)}})); }
   function addRF(){ setForm(f=>({...f,resultFields:[...f.resultFields,{name:"",expected:""}]})); }
   function updateRF(i,k,v){ setForm(f=>{ const rf=[...f.resultFields]; rf[i]={...rf[i],[k]:v}; return{...f,resultFields:rf}; }); }
   function removeRF(i){ setForm(f=>({...f,resultFields:f.resultFields.filter((_,j)=>j!==i)})); }
@@ -3026,7 +3179,7 @@ function TLAgentWizard({ user, editAgent, onSave, onBack, saving, msg, setMsg })
         <div style={{fontSize:11,color:"var(--muted)",marginBottom:8}}><b>Language:</b> {form.language||"—"}</div>
         <div style={{fontSize:11,color:"var(--muted)",marginBottom:8}}><b>Persona:</b> <span style={{display:"inline-flex",alignItems:"center",gap:4,background:"#efefef",padding:"2px 8px",borderRadius:4,fontWeight:700}}>{form.voicePersona||"—"} ▷</span></div>
         {definedFields.length>0 && <div style={{marginTop:10}}><div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:9,color:"var(--muted)",letterSpacing:".12em",marginBottom:4}}>RESULT FIELDS</div>{definedFields.map(f=><div key={f} style={{fontFamily:"var(--fm)",fontSize:10,color:"#1a6fdc",marginBottom:2}}>{f}</div>)}</div>}
-        {Object.keys(qualRules).length>0 && <div style={{marginTop:10}}><div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:9,color:"var(--muted)",letterSpacing:".12em",marginBottom:4}}>QUAL RULES</div>{Object.entries(qualRules).map(([f,kws])=><div key={f} style={{fontSize:10,marginBottom:2}}><span style={{color:"var(--blue)",fontWeight:700}}>{f}</span>{kws.length>0&&kws.map(kw=><span key={kw} style={{fontSize:8,background:"#dbeafe",color:"#1e40af",padding:"1px 4px",borderRadius:2,marginLeft:3}}>{kw}</span>)}</div>)}</div>}
+        {Object.keys(qualRules).length>0 && <div style={{marginTop:10}}><div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:9,color:"var(--muted)",letterSpacing:".12em",marginBottom:4}}>QUAL RULES</div>{Object.entries(qualRules).map(([f,v])=><div key={f} style={{fontSize:10,marginBottom:3}}><span style={{color:"var(--blue)",fontWeight:700}}>{f}</span>{(v.keywords||[]).map(kw=><span key={kw} style={{fontSize:8,background:"#dbeafe",color:"#1e40af",padding:"1px 4px",borderRadius:2,marginLeft:3}}>~{kw}</span>)}{(v.excludeKeywords||[]).map(kw=><span key={kw} style={{fontSize:8,background:"#fee2e2",color:"#991b1b",padding:"1px 4px",borderRadius:2,marginLeft:3}}>✗{kw}</span>)}</div>)}</div>}
         <div style={{marginTop:14}}><div style={{fontFamily:"var(--fd)",fontWeight:700,fontSize:9,color:"var(--muted)",letterSpacing:".12em",marginBottom:4}}>PRESET VARS</div>{["{greeting}","{persona_name}","{callee_name}","{mobile_number}"].map(v=><div key={v} style={{fontFamily:"var(--fm)",fontSize:10,color:"#6739b7",marginBottom:1}}>{v}</div>)}</div>
       </div>
     );
@@ -3130,15 +3283,23 @@ function TLAgentWizard({ user, editAgent, onSave, onBack, saving, msg, setMsg })
                       })}
                     </div>
                     {Object.keys(qualRules).map(field=>{
-                      const kws=qualRules[field]||[];
+                      const kws=qualRules[field]?.keywords||[];
+                      const exKws=qualRules[field]?.excludeKeywords||[];
                       return (
                         <div key={field} style={{border:"1.5px solid #0066b3",padding:"11px 13px",marginBottom:10,background:"#f0f8ff"}}>
                           <div style={{fontFamily:"var(--fm)",fontSize:12,fontWeight:700,color:"var(--blue)",marginBottom:6}}>{field}</div>
-                          <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:7}}>
+                          <div style={{fontSize:9,fontFamily:"var(--fd)",fontWeight:700,color:"#059669",letterSpacing:".1em",marginBottom:3}}>INCLUDE — any match qualifies</div>
+                          <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:5}}>
                             {kws.map(kw=><span key={kw} className="t-kwtag">~{kw}<button className="t-kwtag-rm" onClick={()=>rmKw(field,kw)}>×</button></span>)}
                             {kws.length===0&&<span style={{fontSize:10,color:"var(--muted)",fontStyle:"italic"}}>Any non-empty value qualifies</span>}
                           </div>
-                          <div style={{display:"flex",gap:6}}><input className="t-input" style={{flex:1,fontSize:11,padding:"5px 8px"}} value={kwInputs[field]||""} placeholder="Add keyword (e.g. yes, interested)…" onChange={e=>setKwInputs(p=>({...p,[field]:e.target.value}))} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addKw2(field);}}}/><button className="t-btn t-btn-black t-btn-sm" onClick={()=>addKw2(field)}>+ Add</button></div>
+                          <div style={{display:"flex",gap:6,marginBottom:8}}><input className="t-input" style={{flex:1,fontSize:11,padding:"5px 8px"}} value={kwInputs[field]||""} placeholder="Add include keyword (e.g. yes, interested)…" onChange={e=>setKwInputs(p=>({...p,[field]:e.target.value}))} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addKw2(field);}}}/><button className="t-btn t-btn-black t-btn-sm" onClick={()=>addKw2(field)}>+ Add</button></div>
+                          <div style={{fontSize:9,fontFamily:"var(--fd)",fontWeight:700,color:"#dc2626",letterSpacing:".1em",marginBottom:3}}>EXCLUDE — any match disqualifies</div>
+                          <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:5}}>
+                            {exKws.map(kw=><span key={kw} style={{display:"inline-flex",alignItems:"center",gap:3,background:"#fee2e2",color:"#991b1b",padding:"2px 7px",fontSize:10,fontFamily:"var(--fm)"}}>✗{kw}<button style={{background:"none",border:"none",cursor:"pointer",color:"#991b1b",fontSize:12,padding:"0 0 0 2px",lineHeight:1}} onClick={()=>rmExKw(field,kw)}>×</button></span>)}
+                            {exKws.length===0&&<span style={{fontSize:10,color:"var(--muted)",fontStyle:"italic"}}>No exclusions</span>}
+                          </div>
+                          <div style={{display:"flex",gap:6}}><input className="t-input" style={{flex:1,fontSize:11,padding:"5px 8px",borderColor:"#fca5a5"}} value={exInputs[field]||""} placeholder="Add exclude keyword… (e.g. not eligible)" onChange={e=>setExInputs(p=>({...p,[field]:e.target.value}))} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addExKw2(field);}}}/><button className="t-btn t-btn-sm" style={{background:"#fee2e2",color:"#991b1b",border:"1.5px solid #fca5a5",padding:"4px 10px",fontSize:11,fontFamily:"var(--fd)",fontWeight:700,cursor:"pointer"}} onClick={()=>addExKw2(field)}>✗ Add</button></div>
                         </div>
                       );
                     })}
@@ -3323,7 +3484,7 @@ function ClientDatabaseView({ user }) {
                 <span style={{fontWeight:600}}>{row.value}</span>
                 <span style={{fontSize:11,color:"var(--muted)",fontFamily:"var(--fm)"}}>{row.addedBy || "—"}</span>
                 <span style={{fontSize:10,color:"var(--muted)",fontFamily:"var(--fm)"}}>
-                  {row.addedAt ? new Date(row.addedAt).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"}) : "—"}
+                  {row.addedAt ? fmtDT(row.addedAt, {dateOnly:true}) : "—"}
                 </span>
               </div>
             ))}
@@ -3362,10 +3523,7 @@ function InterviewLineupView({ user }) {
     if (r.ok) setRows(r.rows || []);
   }
   useEffect(() => { load(); }, []);
-  useEffect(() => {
-    const t = setInterval(load, 5 * 60 * 1000);
-    return () => clearInterval(t);
-  }, []);
+  // Auto-refresh removed: use the manual Refresh button to reload
 
   async function handleUpdate(callId, field, value) {
     if (!callId) return;
@@ -3506,15 +3664,7 @@ function InterviewLineupView({ user }) {
     );
   }
 
-  function formatStartedAt(v) {
-    if (!v) return "";
-    try {
-      const d = new Date(v);
-      if (isNaN(d.getTime())) return String(v);
-      return d.toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"}) +
-        " · " + d.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"});
-    } catch { return String(v); }
-  }
+  function formatStartedAt(v) { return fmtDT(v); }
 
   function formatMonth(v) {
     if (!v) return "";
@@ -3918,31 +4068,45 @@ function ManualTrackerView({ user }) {
   }
   useEffect(()=>{ load(); loadTeamLists(); },[]);
 
-  // Debounced auto-save: clears any pending save for that row and schedules a fresh one
+  // Debounced schedule for empty (unsaved) rows only
   function scheduleSave(rowId, isSavedRow) {
+    if (isSavedRow) return; // saved rows use per-cell debounce in patchSaved
     if (debounceRef.current[rowId]) clearTimeout(debounceRef.current[rowId]);
     debounceRef.current[rowId] = setTimeout(() => {
       delete debounceRef.current[rowId];
-      if (isSavedRow) flushSaved(rowId);
-      else            flushEmpty(rowId);
+      flushEmpty(rowId);
     }, 1200);
   }
-  // Immediate save (used on Tab/Enter that exits row, or unmount)
   function saveNow(rowId, isSavedRow) {
+    if (isSavedRow) return;
     if (debounceRef.current[rowId]) { clearTimeout(debounceRef.current[rowId]); delete debounceRef.current[rowId]; }
-    if (isSavedRow) flushSaved(rowId);
-    else            flushEmpty(rowId);
+    flushEmpty(rowId);
   }
   // On unmount, flush any pending
   useEffect(()=>()=>{ Object.keys(debounceRef.current).forEach(id => clearTimeout(debounceRef.current[id])); },[]);
-  useEffect(()=>{
-    const t = setInterval(load, 5 * 60 * 1000);
-    return ()=>clearInterval(t);
-  },[]);
+  // Auto-refresh removed: use the manual Refresh button to reload
+
+  // Per-cell save state: { "uid|fieldName": "saving"|"ok" }
+  const [cellSaveState, setCellSaveState] = useState({});
+  function _setCellSS(uid, field, state) {
+    const k = uid + "|" + field;
+    setCellSaveState(p=>({...p,[k]:state}));
+    if (state==="ok") setTimeout(()=>setCellSaveState(p=>{const n={...p};delete n[k];return n;}),1500);
+  }
 
   function patchSaved(uid, key, val) {
-    setSaved(prev=>prev.map(r=>r.uid===uid?{...r,[key]:val,_dirty:true}:r));
-    // save on blur/Tab/Enter only
+    setSaved(prev=>prev.map(r=>r.uid===uid?{...r,[key]:val}:r));
+    // schedule per-cell debounce
+    const debKey = uid + "|" + key;
+    if (debounceRef.current[debKey]) clearTimeout(debounceRef.current[debKey]);
+    debounceRef.current[debKey] = setTimeout(async () => {
+      delete debounceRef.current[debKey];
+      _setCellSS(uid, key, "saving");
+      try {
+        await api("updateManualEntry", { uniqueId: uid, fields: { [key]: val } });
+        _setCellSS(uid, key, "ok");
+      } catch { _setCellSS(uid, key, null); }
+    }, 600);
   }
   function patchEmpty(id, key, val) {
     setEmpties(prev=>prev.map(r=>r._id===id?{...r,[key]:val}:r));
@@ -3998,21 +4162,6 @@ function ManualTrackerView({ user }) {
     } finally {
       flushingRef.current.delete(id);
     }
-  }
-
-  async function flushSaved(uid) {
-    const row = saved.find(r=>r.uid===uid);
-    if (!row||!row._dirty) return;
-    _setSS(uid,"saving");
-    await api("updateManualEntry",{uniqueId:uid,fields:{
-      "Candidate Name":row.name, "Contact Number":row.phone,
-      "Location":row.location||"",
-      "Client":row.client, "Role":row.role, "Source":row.source,
-      "Date":row.date,
-      "Call Status":row.callStatus, "Lined-up":row.linedUp, "Remarks":row.remarks,
-    }});
-    setSaved(prev=>prev.map(r=>r.uid===uid?{...r,_dirty:false}:r));
-    _setSS(uid,"ok");
   }
 
   function addMoreRows(n=10) {
@@ -4137,11 +4286,13 @@ function ManualTrackerView({ user }) {
             {displayRows.map((row,idx)=>{
               const isSaved = !!row.uid;
               const sid = row.uid||row._id;
-              const ss  = saveState[sid];
-              const isDirty = row._dirty;
+              const ss  = saveState[sid];  // for empty rows
               const hasData = !isSaved&&(row.name||row.phone);
-              const rowBg = isDirty?"#fffde7":hasData?"#f0f7ff":"transparent";
-              // No onBlur saves — patchSaved/patchEmpty already schedule a debounced save
+              // For saved rows: check if any cell is saving/ok
+              const cellsForRow = isSaved ? Object.entries(cellSaveState).filter(([k])=>k.startsWith(row.uid+"|")) : [];
+              const anyCellSaving = cellsForRow.some(([,v])=>v==="saving");
+              const anyCellOk = cellsForRow.some(([,v])=>v==="ok") && !anyCellSaving;
+              const rowBg = hasData?"#f0f7ff":"transparent";
               const onChange = (key,val)=>{ if(isSaved)patchSaved(row.uid,key,val); else patchEmpty(row._id,key,val); };
 
               return (
@@ -4151,7 +4302,9 @@ function ManualTrackerView({ user }) {
                   </td>
                   {MT_COLS.map(col=>{
                     const val = row[col.key]||"";
-                    const isSaving = ss === "saving";
+                    const cellKey = isSaved ? (row.uid + "|" + col.key) : null;
+                    const cellSt = cellKey ? cellSaveState[cellKey] : null;
+                    const isCellSaving = cellSt === "saving";
                     if (col.readOnly) {
                       return (
                         <td key={col.key} style={{padding:"4px 8px",borderBottom:"1px solid #eee",borderRight:"1px solid #f5f5f5",height:30,fontSize:11,color:isSaved?"var(--black)":"#bbb",fontFamily:"var(--fb)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={row.addedByEmail||""}>
@@ -4160,13 +4313,13 @@ function ManualTrackerView({ user }) {
                       );
                     }
                     return (
-                      <td key={col.key} style={{padding:0,borderBottom:"1px solid #eee",borderRight:"1px solid #f5f5f5",height:30}}>
+                      <td key={col.key} style={{padding:0,borderBottom:"1px solid #eee",borderRight:"1px solid #f5f5f5",height:30,position:"relative"}}>
                         {col.key === "client" || col.key === "role" ? (
                           <TeamListDropdown
                             type={col.key}
                             value={val}
                             options={col.key === "client" ? teamLists.clients : teamLists.roles}
-                            disabled={isSaving}
+                            disabled={isCellSaving}
                             canAdd={user.role==="team_lead"||user.role==="individual_contributor"||user.role==="super_admin"}
                             onChange={v=>onChange(col.key, v)}
                             onRequestAdd={()=>setShowAddModal(col.key)}
@@ -4174,10 +4327,9 @@ function ManualTrackerView({ user }) {
                         ) : col.type==="select"?(
                           <select
                             value={val}
-                            disabled={isSaving}
                             onChange={e=>onChange(col.key,e.target.value)}
-                            onBlur={()=>saveNow(sid, isSaved)}
-                            style={{...cellSel, opacity: isSaving ? 0.5 : 1}}
+                            onBlur={()=>!isSaved&&saveNow(sid, false)}
+                            style={{...cellSel, opacity: isCellSaving ? 0.6 : 1}}
                           >
                             <option value="">—</option>
                             {col.opts.map(o=><option key={o} value={o}>{o}</option>)}
@@ -4186,13 +4338,12 @@ function ManualTrackerView({ user }) {
                           <input
                             type={col.type==="date"?"date":"text"}
                             value={val}
-                            disabled={isSaving}
                             placeholder={!isSaved?col.label:""}
                             onChange={e=>onChange(col.key,e.target.value)}
-                            onBlur={()=>saveNow(sid, isSaved)}
+                            onBlur={()=>{ if(!isSaved) saveNow(sid, false); }}
                             onKeyDown={e=>{
                               if (e.key==="Enter" || e.key==="Tab") {
-                                saveNow(sid, isSaved);
+                                if (!isSaved) saveNow(sid, false);
                               }
                               onKeyDown(e,sid,isSaved);
                             }}
@@ -4200,18 +4351,21 @@ function ManualTrackerView({ user }) {
                               ...cellInp,
                               fontFamily:col.mono?"var(--fm)":"var(--fb)",
                               color:(!val&&!isSaved)?"#bbb":"var(--black)",
-                              opacity: isSaving ? 0.5 : 1,
+                              opacity: isCellSaving ? 0.6 : 1,
                             }}
                           />
                         )}
+                        {isCellSaving && <span style={{position:"absolute",right:3,top:"50%",transform:"translateY(-50%)",fontSize:9,color:"var(--blue)",fontFamily:"var(--fm)",pointerEvents:"none"}}>…</span>}
+                        {cellSt==="ok" && <span style={{position:"absolute",right:3,top:"50%",transform:"translateY(-50%)",fontSize:11,color:"var(--green)",pointerEvents:"none"}}>✓</span>}
                       </td>
                     );
                   })}
                   <td style={{textAlign:"center",borderBottom:"1px solid #eee",padding:"4px 2px"}}>
-                    {ss==="saving" && <Spin/>}
-                    {ss==="ok"     && <span style={{color:"var(--green)",fontSize:14,lineHeight:1}}>✓</span>}
-                    {!ss&&isDirty  && <span style={{color:"#f59e0b",fontSize:16,lineHeight:1}}>●</span>}
-                    {!ss&&!isSaved&&(row.name||row.phone)&&!(row.callStatus&&row.callStatus.trim()) && <span title="Fill Call Status to save" style={{color:"#94a3b8",fontSize:11,cursor:"default"}}>⏸</span>}
+                    {!isSaved && ss==="saving" && <Spin/>}
+                    {!isSaved && ss==="ok"     && <span style={{color:"var(--green)",fontSize:14,lineHeight:1}}>✓</span>}
+                    {isSaved && anyCellSaving   && <Spin/>}
+                    {isSaved && anyCellOk       && <span style={{color:"var(--green)",fontSize:14,lineHeight:1}}>✓</span>}
+                    {!isSaved&&!ss&&(row.name||row.phone)&&!(row.callStatus&&row.callStatus.trim()) && <span title="Fill Call Status to save" style={{color:"#94a3b8",fontSize:11,cursor:"default"}}>⏸</span>}
                   </td>
                 </tr>
               );
@@ -4231,8 +4385,8 @@ function ManualTrackerView({ user }) {
         <div style={{padding:"5px 12px",fontSize:10,fontFamily:"var(--fm)",color:"var(--muted)",background:"#fafafa",borderTop:"1px solid #eee",display:"flex",gap:16,flexWrap:"wrap"}}>
           <span>Tab — next cell</span>
           <span>Enter — next row</span>
-          <span>New rows save when Call Status is set · Existing rows save on blur</span>
-          {Object.values(saveState).some(s=>s==="saving") && <span style={{color:"var(--blue)"}}>Saving…</span>}
+          <span>New rows save when Call Status is set · Each cell saves independently on blur</span>
+          {(Object.values(saveState).some(s=>s==="saving") || Object.values(cellSaveState).some(s=>s==="saving")) && <span style={{color:"var(--blue)"}}>Saving…</span>}
         </div>
       </div>
 
@@ -4732,7 +4886,7 @@ function SupportView({ user }) {
                   <div style={{fontSize:12,color:"#555",lineHeight:1.5,marginBottom:8,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{q.description}</div>
                   <div style={{display:"flex",gap:16,fontSize:10,fontFamily:"var(--fm)",color:"var(--muted)",flexWrap:"wrap"}}>
                     <span>By: {q.raisedByName||q.raisedByEmail||"—"}</span>
-                    <span>{q.raisedAt ? new Date(q.raisedAt).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "—"}</span>
+                    <span>{q.raisedAt ? fmtDT(q.raisedAt) : "—"}</span>
                     {q.screenshot && <span style={{color:"var(--blue)"}}>📎 Screenshot</span>}
                     {q.resolution && <span style={{color:"var(--green)"}}>✓ Resolution added</span>}
                   </div>
@@ -4871,7 +5025,7 @@ function QueryDetailModal({ query, user, isSuperAdmin, onClose, onUpdated }) {
         <div className="t-modal-body" style={{display:"flex",flexDirection:"column",gap:14}}>
           <div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--muted)",display:"flex",gap:16,flexWrap:"wrap"}}>
             <span>Raised by: <b style={{color:"var(--black)"}}>{query.raisedByName||query.raisedByEmail||"—"}</b></span>
-            <span>{query.raisedAt ? new Date(query.raisedAt).toLocaleString("en-IN") : "—"}</span>
+            <span>{query.raisedAt ? fmtDT(query.raisedAt) : "—"}</span>
           </div>
 
           <div style={{background:"#f8f8f8",border:"1.5px solid #eee",padding:"12px 14px",borderRadius:3}}>

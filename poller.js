@@ -31,6 +31,7 @@ const axios = require('axios');
 const {
   readSheet, readSheetAsObjects, writeRow, writeRows, appendRows,
   deleteRows, ensureSheet, testConnection, batchWriteRows, sleep, withRetry,
+  clearRange,
 } = require('./sheets');
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -75,7 +76,38 @@ const CB_KEYWORDS = ['call back', 'callback', 'call-back', 'ring back', 'follow 
 // ─── Runtime state ────────────────────────────────────────────────────────────
 
 let pollRunning   = false;
-let _pollCycleCount = 0; // increments each poll run, used for SCHEDULED throttling
+let _pollCycleCount = 0;
+
+// ── Fresh-campaign registry ───────────────────────────────────────────────────
+// When a campaign is triggered, it's registered here. The poll loop gives it
+// aggressive coverage for 10 min, then backs off to every 3 hours.
+const _freshCampaigns = new Map(); // key='agentCode|reqId' → { triggeredAt, lastPolledAt }
+const FRESH_WINDOW_MS       = 10 * 60 * 1000;       // 10 min  — poll every cycle
+const STALE_POLL_INTERVAL_MS = 3 * 60 * 60 * 1000;  // 3 hours — poll once per 3h after that
+
+function registerFreshCampaign(agentCode, requestId) {
+  const key = agentCode + '|' + requestId;
+  _freshCampaigns.set(key, { triggeredAt: Date.now(), lastPolledAt: 0 });
+  console.log(`[poll] Fresh campaign registered: ${key} (10-min intensive window starts now)`);
+}
+
+function _shouldPollRequest(reqId, agentCode, isToday) {
+  if (!reqId) return isToday; // no reqId → fall back to today-only heuristic
+  const key = agentCode + '|' + reqId;
+  const entry = _freshCampaigns.get(key);
+
+  if (entry) {
+    const age = Date.now() - entry.triggeredAt;
+    if (age < FRESH_WINDOW_MS) return true; // still in 10-min window — always poll
+    // Past 10 min: only poll if 3h have elapsed since last poll
+    const shouldPoll = Date.now() - entry.lastPolledAt > STALE_POLL_INTERVAL_MS;
+    if (shouldPoll) entry.lastPolledAt = Date.now();
+    return shouldPoll;
+  }
+
+  // Not in registry (campaign pre-dates this server start): fall back to today heuristic
+  return isToday;
+} // increments each poll run, used for SCHEDULED throttling
 let lastPollTime  = null;
 let lastPollStats = {};
 let jobStats      = {};
@@ -100,20 +132,27 @@ let jobStats      = {};
 // ── Tuning knobs (only these need changing) ───────────────────────────────────
 
 const POLL_BUDGET = {
-  // ── Live-poll budget (INITIATED / IN_PROGRESS / SCHEDULED / NOT_STARTED) ──
-  // Reduced from 400/300 → quota was being fully exhausted every cycle,
-  // blocking user-facing login/API requests which share the same Sheets quota.
-  POLL_GLOBAL:      80,   // total Hunar API slots for live polling across all agents/cycle
-  POLL_MAX_CAP:     60,   // hard ceiling per single agent for live polling
-
-  // ── Backfill budget (COMPLETED rows missing result data) ──────────────────
-  // Reduced from 200/150 → backfill runs on its own 15-min cron, doesn't need large caps
-  BACKFILL_GLOBAL:  30,   // total Hunar API slots for backfill across all agents/cycle
-  BACKFILL_MAX_CAP: 25,   // hard ceiling per single agent for backfill
-
-  // ── Shared ────────────────────────────────────────────────────────────────
-  // No MIN_CAP — zero means zero.  Agents only get a slot if they have work.
+  // ── Active hours 8am–8pm IST ───────────────────────────────────────────────
+  POLL_GLOBAL:         25,
+  POLL_MAX_CAP:         8,
+  BACKFILL_GLOBAL:     12,
+  BACKFILL_MAX_CAP:     4,
+  // ── After hours 8pm–8am IST ───────────────────────────────────────────────
+  POLL_GLOBAL_AH:      40,
+  POLL_MAX_CAP_AH:     15,
+  BACKFILL_GLOBAL_AH:  50,
+  BACKFILL_MAX_CAP_AH: 20,
 };
+
+// ── IST time helpers ──────────────────────────────────────────────────────────
+function _istHour() {
+  const istMs = Date.now() + (5.5 * 3600 * 1000);
+  return new Date(istMs).getUTCHours();
+}
+// true = 8am–8pm IST (Hunar's active calling window)
+function _isActiveHours() {
+  return true;
+}
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
@@ -174,14 +213,17 @@ async function _scanAgentWork(agent) {
     const reqIdColIdx  = headers.indexOf('Request ID');
     if (statusCol < 0) return result;
 
-    const LIVE_STATUSES = new Set(['INITIATED', 'IN_PROGRESS', 'SCHEDULED', 'NOT_STARTED']);
+    const LIVE_STATUSES = new Set(['INITIATED', 'IN_PROGRESS', 'SCHEDULED', 'NOT_STARTED', 'RINGING']);
     const resultFields  = resultFieldNames(agent.resultSchema);
-
-    for (const row of rows) {
+        for (const row of rows) {
       const status = String(row[statusCol] || '').toUpperCase();
 
-      // Terminal — Hunar will never update these again
-      if (status === 'NOT_CONNECTED' || status === 'FAILED' || status === 'CANCELLED') continue;
+      // CANCELLED — Hunar never updates these, skip always
+      if (status === 'CANCELLED') continue;
+
+      // During active hours: skip NC/FAILED (no retry calls being made yet)
+      // After hours: include NC/FAILED so they get polled for retry triggers
+if (status === 'NOT_CONNECTED' || status === 'FAILED') continue;
 
       if (LIVE_STATUSES.has(status)) {
         result.pollNeeded++;
@@ -223,15 +265,19 @@ async function _scanAgentWork(agent) {
  * Returns Map<agentCode, { pollCap, backfillCap }>
  */
 function computeAgentCaps(scanResults) {
-  const { POLL_GLOBAL, POLL_MAX_CAP, BACKFILL_GLOBAL, BACKFILL_MAX_CAP } = POLL_BUDGET;
+  const active = _isActiveHours();
+  const POLL_G  = active ? POLL_BUDGET.POLL_GLOBAL      : POLL_BUDGET.POLL_GLOBAL_AH;
+  const POLL_C  = active ? POLL_BUDGET.POLL_MAX_CAP     : POLL_BUDGET.POLL_MAX_CAP_AH;
+  const BF_G    = active ? POLL_BUDGET.BACKFILL_GLOBAL  : POLL_BUDGET.BACKFILL_GLOBAL_AH;
+  const BF_C    = active ? POLL_BUDGET.BACKFILL_MAX_CAP : POLL_BUDGET.BACKFILL_MAX_CAP_AH;
 
   const pollCaps     = _allocateBudget(
     scanResults.map(r => ({ agentCode: r.agentCode, count: r.pollNeeded })),
-    POLL_GLOBAL, POLL_MAX_CAP
+    POLL_G, POLL_C
   );
   const backfillCaps = _allocateBudget(
     scanResults.map(r => ({ agentCode: r.agentCode, count: r.backfillNeeded })),
-    BACKFILL_GLOBAL, BACKFILL_MAX_CAP
+    BF_G, BF_C
   );
 
   const combined = new Map();
@@ -281,6 +327,24 @@ async function getCall(callId) {
 
 async function bulkCall(body) {
   return hunarPost('/external/v1/calls/bulk/', body);
+}
+
+async function listCallsByAgentId(agentId, statuses = [], maxPages = 5) {
+  if (!agentId || !statuses.length) return [];
+  const results = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const params = new URLSearchParams();
+    params.set('agent_id', agentId);
+    statuses.forEach(s => params.append('status', s));
+    params.set('page_size', '200');
+    params.set('page', String(page));
+    const r = await hunarGet(`/external/v1/calls/?${params.toString()}`);
+    if (!r.ok || !r.data?.results?.length) break;
+    results.push(...r.data.results);
+    if (!r.data.next || r.data.results.length < 200) break;
+    await sleep(200);
+  }
+  return results;
 }
 
 // ─── Sheet data loaders ───────────────────────────────────────────────────────
@@ -411,9 +475,12 @@ function isQualified(agent, result) {
       if (!rule.field) return true;
       const val = result[rule.field];
       if (!val) return false;
+      const lower = String(val).toLowerCase();
+      // excludeKeywords checked FIRST — any match = disqualified
+      const excl = Array.isArray(rule.excludeKeywords) ? rule.excludeKeywords.filter(Boolean) : [];
+      if (excl.length && excl.some(kw => lower.includes(String(kw).toLowerCase()))) return false;
       const keywords = Array.isArray(rule.keywords) ? rule.keywords.filter(Boolean) : [];
       if (!keywords.length) return !!val;
-      const lower = String(val).toLowerCase();
       return keywords.some(kw => lower.includes(String(kw).toLowerCase()));
     });
   }
@@ -474,11 +541,7 @@ function istDateStr(date = new Date()) {
  * Hunar operates 8am–8pm; we buffer to 11:30pm to catch all late completions.
  */
 function isPollingHours() {
-  const ist = istNow();
-  const hours   = ist.getUTCHours();
-  const minutes = ist.getUTCMinutes();
-  const timeMin = hours * 60 + minutes;
-  return timeMin >= 8 * 60 && timeMin < 23 * 60 + 30; // 08:00 → 23:30 IST
+  return true;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -675,9 +738,9 @@ async function _pollAgent(agent, userRoleMap, triggerMap, pollCap = POLL_BUDGET.
     const reqId  = reqIdCol >= 0 ? String(row[reqIdCol] || '') : '';
     const campaignDone = reqId ? campaignStatus.get(reqId) === 'COMPLETED' : false;
 
-    // Skip ALL terminal statuses — NOT_CONNECTED, FAILED, CANCELLED never get updated by Hunar again
-    // We discover these by polling SCHEDULED/INITIATED/IN_PROGRESS rows instead
-    if (status === 'NOT_CONNECTED' || status === 'FAILED' || status === 'CANCELLED') continue;
+    // Skip ALL terminal statuses during active hours — NOT_CONNECTED, FAILED, CANCELLED never get updated by Hunar again
+    // After hours (8pm–8am IST): include NOT_CONNECTED + FAILED so after-hours sweep can process retry triggers
+if (status === 'CANCELLED' || status === 'NOT_CONNECTED' || status === 'FAILED') continue;
 
     const hasResult = status === 'COMPLETED' && resultFields.some(f => {
       const col = mtHeaders.indexOf('out.' + f);
@@ -694,11 +757,11 @@ async function _pollAgent(agent, userRoleMap, triggerMap, pollCap = POLL_BUDGET.
     const campaignDate  = triggeredAtMs ? istDateStr(new Date(triggeredAtMs)) : '';
     const isToday       = campaignDate === todayStr;
 
-    // SCHEDULED: throttle previous-day campaigns to every 20th cycle (~40 min)
-    // Today's SCHEDULED are always included so fresh triggers aren't delayed.
-    // NOT_STARTED is always included regardless of day (fires immediately on trigger).
-    if (priority === 4 && !isToday) {
-      if ((_pollCycleCount % 20) !== (i % 20)) continue;
+    // Fresh campaigns (registered within 10 min): always include.
+    // Stale campaigns: only poll once every 3 hours.
+    // NOT_STARTED always passes (fires immediately on trigger regardless of age).
+    if (status !== 'NOT_STARTED' && priority !== 0) {
+      if (!_shouldPollRequest(reqId, agent.agentCode, isToday)) continue;
     }
 
     candidates.push({ i, row, callId, status, reqId, priority, campaignDone, isToday, triggeredAtMs });
@@ -749,8 +812,8 @@ async function _pollAgent(agent, userRoleMap, triggerMap, pollCap = POLL_BUDGET.
   const backfillCandidates = candidates.filter(c => c.priority === 0); // COMPLETED, no eval
   const pollCandidates     = candidates.filter(c => c.priority !== 0); // live calls
 
-  const backfillPass = backfillCandidates.slice(0, backfillCap);
-  const pollPass     = pollCandidates.slice(0, pollCap);
+  const backfillPass = backfillCandidates.slice(0, backfillCap);  // keep — individual API calls
+  const pollPass     = pollCandidates;                             // no cap — already in memory
 
   if (backfillCandidates.length > 0) {
     console.log(`[poll] ${agent.agentCode}: backfill=${backfillCandidates.length} cap=${backfillCap} → processing ${backfillPass.length}`);
@@ -760,79 +823,122 @@ async function _pollAgent(agent, userRoleMap, triggerMap, pollCap = POLL_BUDGET.
     console.log(`[poll] ${agent.agentCode}: poll=${pollCandidates.length} (${todayCount} today) cap=${pollCap} → processing ${pollPass.length}`);
   }
 
-  const toProcess = [...backfillPass, ...pollPass];
 
-  // ── Concurrent fetch — process CONCURRENCY calls at a time ───────────────
-  // Serial: 100 calls × 150ms = 15s per agent.
-  // Concurrent (5): 100 calls / 5 × 150ms = 3s per agent. ~5x faster.
-  // Hunar rate limit is 10 req/s; CONCURRENCY=5 at 150ms gap = ~5 req/s — safe.
-  const CONCURRENCY = 5;
-
-  async function processOne({ i, row, callId, status, reqId, campaignDone }) {
-    stats.fetched++;
-    const r = await getCall(callId);
-    if (!r.ok) { stats.errors++; return null; }
-
-    const d = r.data;
-    const newStatus = String(d.status || status).toUpperCase();
-    const result    = d.result || {};
-
-    const newRow = [...row];
-    const setH = (name, val) => { const k = mtHeaders.indexOf(name); if (k >= 0) newRow[k] = val; };
-
-    setH('Status',             newStatus);
-    setH('Duration (Minutes)', d.duration_minutes ?? (row[mtHeaders.indexOf('Duration (Minutes)')] || 0));
-    setH('Duration (Seconds)', d.duration_seconds ?? (row[mtHeaders.indexOf('Duration (Seconds)')] || 0));
-    setH('Started At',         d.started_at || row[mtHeaders.indexOf('Started At')] || '');
-    setH('Ended At',           d.ended_at   || row[mtHeaders.indexOf('Ended At')]   || '');
-    setH('Answered By',        d.answered_by        || '');
-    setH('Engagement Status',  d.engagement_status  || '');
-    setH('Call Ended By',      d.call_ended_by      || '');
-    setH('Recording URL',      d.recording_url      || '');
-    setH('Updated At',         new Date().toISOString());
-
-    customVars.forEach(cv => { if (d.custom_data?.[cv] !== undefined) setH('in.' + cv, d.custom_data[cv]); });
-    resultFields.forEach(f => { setH('out.' + f, result[f] !== undefined ? result[f] : ''); });
-
-    // NC handling (serial-safe: ncExistingIds is a Set, mutations are fine)
-    if (newStatus === 'COMPLETED' && ncExistingIds.has(callId)) {
-      const ncRowIdx = ncRows.findIndex(r => String(r[0] || '').trim() === callId);
-      if (ncRowIdx >= 0) ncDeletes.push(ncRowIdx + 2);
-    } else if ((newStatus === 'NOT_CONNECTED' || newStatus === 'FAILED') && campaignDone) {
-      if (!ncExistingIds.has(callId) && status !== 'COMPLETED') {
-        const calleeNameCol = mtHeaders.indexOf('Callee Name');
-        const mobileCol     = mtHeaders.indexOf('Mobile Number');
-        const trigByCol     = mtHeaders.indexOf('Triggered By');
-        const retryDate     = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString().slice(0, 10);
-        ncAppends.push([
-          callId,
-          calleeNameCol >= 0 ? String(row[calleeNameCol] || '') : '',
-          mobileCol     >= 0 ? String(row[mobileCol]     || '') : '',
-          newStatus, reqId, 0, 0, '',
-          trigByCol >= 0 ? String(row[trigByCol] || '') : '',
-          new Date().toISOString(), retryDate, 'PENDING', '',
-        ]);
-        ncExistingIds.add(callId);
-      }
+// ── Pass 1: backfill — individual getCall() (still capped) ──────────────────
+const CONCURRENCY = 5;
+async function processOne({ i, row, callId, status, reqId, campaignDone }) {
+  stats.fetched++;
+  const r = await getCall(callId);
+  if (!r.ok) { stats.errors++; return null; }
+  const d = r.data;
+  const newStatus = String(d.status || status).toUpperCase();
+  const result    = d.result || {};
+  const newRow = [...row];
+  const setH = (name, val) => { const k = mtHeaders.indexOf(name); if (k >= 0) newRow[k] = val; };
+  setH('Status',             newStatus);
+  setH('Duration (Minutes)', d.duration_minutes ?? (row[mtHeaders.indexOf('Duration (Minutes)')] || 0));
+  setH('Duration (Seconds)', d.duration_seconds ?? (row[mtHeaders.indexOf('Duration (Seconds)')] || 0));
+  setH('Started At',         d.started_at || row[mtHeaders.indexOf('Started At')] || '');
+  setH('Ended At',           d.ended_at   || row[mtHeaders.indexOf('Ended At')]   || '');
+  setH('Answered By',        d.answered_by        || '');
+  setH('Engagement Status',  d.engagement_status  || '');
+  setH('Call Ended By',      d.call_ended_by      || '');
+  setH('Recording URL',      d.recording_url      || '');
+  setH('Updated At',         new Date().toISOString());
+  customVars.forEach(cv => { if (d.custom_data?.[cv] !== undefined) setH('in.' + cv, d.custom_data[cv]); });
+  resultFields.forEach(f => { setH('out.' + f, result[f] !== undefined ? result[f] : ''); });
+  // NC handling
+  if (newStatus === 'COMPLETED' && ncExistingIds.has(callId)) {
+    const ncRowIdx = ncRows.findIndex(r => String(r[0] || '').trim() === callId);
+    if (ncRowIdx >= 0) ncDeletes.push(ncRowIdx + 2);
+  } else if ((newStatus === 'NOT_CONNECTED' || newStatus === 'FAILED') && campaignDone) {
+    if (!ncExistingIds.has(callId) && status !== 'COMPLETED') {
+      const calleeNameCol = mtHeaders.indexOf('Callee Name');
+      const mobileCol     = mtHeaders.indexOf('Mobile Number');
+      const trigByCol     = mtHeaders.indexOf('Triggered By');
+      const retryDate     = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+      ncAppends.push([
+        callId,
+        calleeNameCol >= 0 ? String(row[calleeNameCol] || '') : '',
+        mobileCol     >= 0 ? String(row[mobileCol]     || '') : '',
+        newStatus, reqId, 0, 0, '',
+        trigByCol >= 0 ? String(row[trigByCol] || '') : '',
+        new Date().toISOString(), retryDate, 'PENDING', '',
+      ]);
+      ncExistingIds.add(callId);
     }
+  }
+  return { rowIndex: i + 2, values: newRow };
+}
 
-    return { rowIndex: i + 2, values: newRow };
+for (let ci = 0; ci < backfillPass.length; ci += CONCURRENCY) {
+  const chunk   = backfillPass.slice(ci, ci + CONCURRENCY);
+  const results = await Promise.allSettled(chunk.map(item => processOne(item)));
+  for (const res of results) {
+    if (res.status === 'fulfilled' && res.value) { rowUpdates.push(res.value); stats.updated++; }
+  }
+  if (ci + CONCURRENCY < backfillPass.length) await sleep(150);
+}
+
+// ── Pass 2: poll — ONE list API call, update all matching rows from map ──────
+if (pollPass.length > 0) {
+  const liveCalls = await listCallsByAgentId(
+    agent.agentId,
+    ['INITIATED', 'IN_PROGRESS', 'RINGING', 'NOT_STARTED', 'SCHEDULED']
+  );
+  const liveMap = new Map(liveCalls.map(c => [String(c.id || '').trim(), c]));
+  console.log(`[poll] ${agent.agentCode}: list returned ${liveCalls.length} live calls → ${pollPass.length} candidates`);
+
+  const transitioned = [];
+
+  for (const { i, row, callId, status, reqId, campaignDone } of pollPass) {
+    const d = liveMap.get(callId);
+    if (d) {
+      stats.fetched++;
+      const newStatus = String(d.status || status).toUpperCase();
+      const result    = d.result || {};
+      const newRow    = [...row];
+      const setH = (name, val) => { const k = mtHeaders.indexOf(name); if (k >= 0) newRow[k] = val; };
+      setH('Status',             newStatus);
+      setH('Duration (Minutes)', d.duration_minutes ?? (row[mtHeaders.indexOf('Duration (Minutes)')] || 0));
+      setH('Duration (Seconds)', d.duration_seconds ?? (row[mtHeaders.indexOf('Duration (Seconds)')] || 0));
+      setH('Started At',         d.started_at || row[mtHeaders.indexOf('Started At')] || '');
+      setH('Ended At',           d.ended_at   || row[mtHeaders.indexOf('Ended At')]   || '');
+      setH('Answered By',        d.answered_by        || '');
+      setH('Engagement Status',  d.engagement_status  || '');
+      setH('Call Ended By',      d.call_ended_by      || '');
+      setH('Recording URL',      d.recording_url      || '');
+      setH('Updated At',         new Date().toISOString());
+      customVars.forEach(cv => { if (d.custom_data?.[cv] !== undefined) setH('in.' + cv, d.custom_data[cv]); });
+      resultFields.forEach(f => { setH('out.' + f, result[f] !== undefined ? result[f] : ''); });
+      rowUpdates.push({ rowIndex: i + 2, values: newRow });
+      stats.updated++;
+    } else {
+      // Not in live list — call has transitioned to terminal status
+      transitioned.push({ i, row, callId, status, reqId, campaignDone });
+    }
   }
 
-  // Process in chunks of CONCURRENCY — each chunk fires in parallel,
-  // then we wait for all to settle before the next chunk.
-  for (let ci = 0; ci < toProcess.length; ci += CONCURRENCY) {
-    const chunk = toProcess.slice(ci, ci + CONCURRENCY);
-    const results = await Promise.allSettled(chunk.map(item => processOne(item)));
-    for (const res of results) {
-      if (res.status === 'fulfilled' && res.value) {
-        rowUpdates.push(res.value);
-        stats.updated++;
+  // Fetch ALL transitioned calls concurrently in chunks — no cap.
+  // Sort: COMPLETED (most likely to have eval data) first, then IN_PROGRESS → RINGING → INITIATED → rest.
+  // This clears the entire backlog in one cycle instead of drip-feeding 20 per cycle.
+  if (transitioned.length > 0) {
+    const ORDER = { 'IN_PROGRESS': 0, 'RINGING': 1, 'INITIATED': 2, 'NOT_STARTED': 3, 'SCHEDULED': 4 };
+    transitioned.sort((a, b) => (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9));
+
+    console.log(`[poll] ${agent.agentCode}: ${transitioned.length} transitioned calls — fetching ALL concurrently in chunks`);
+    const TRANS_CONCURRENCY = 8; // 8 parallel Hunar API calls per chunk
+    for (let ci = 0; ci < transitioned.length; ci += TRANS_CONCURRENCY) {
+      const chunk   = transitioned.slice(ci, ci + TRANS_CONCURRENCY);
+      const results = await Promise.allSettled(chunk.map(item => processOne(item)));
+      for (const res of results) {
+        if (res.status === 'fulfilled' && res.value) { rowUpdates.push(res.value); stats.updated++; }
       }
+      // Small gap between chunks to avoid Hunar rate limits, but not between individual calls
+      if (ci + TRANS_CONCURRENCY < transitioned.length) await sleep(200);
     }
-    // Inter-chunk gap: keeps total rate at CONCURRENCY / gap req/s
-    if (ci + CONCURRENCY < toProcess.length) await sleep(150);
   }
+}
 
   // Flush all writes — ONE batchUpdate call instead of N individual writes
   // This is the key quota fix: N rows = 1 API call, not N API calls
@@ -911,13 +1017,17 @@ async function _pollAgent(agent, userRoleMap, triggerMap, pollCap = POLL_BUDGET.
 
   }
 
-  // FIX 2: Build merged rows using a Map (O(n)) instead of .find() inside .map() (O(n²))
-  // This avoids creating a huge in-memory copy of all mtRows on every poll cycle
-  if (stats.updated > 0) {
+  // Campaign Tracker refresh strategy:
+  // - Active hours (8am–8pm): SKIP entirely. CT reads 2 Sheets ops per agent per cycle.
+  //   With 5 active agents that's 10 extra ops every 5 min = ~120/hour just for CT stats.
+  //   Users can see live stats directly in the Google Sheet; CT is not user-facing in the portal UI.
+  // - After hours: run every 5th poll cycle to keep CT accurate for daily reports.
+  const active = _isActiveHours();
+  if (!active && stats.updated > 0 && (_pollCycleCount % 5) === 0) {
     const updatedRowMap = new Map(rowUpdates.map(u => [u.rowIndex, u.values]));
     const mergedRows = mtRows.map((r, i) => updatedRowMap.get(i + 2) || r);
     await _refreshCampaignTracker(agent, agentSsId, mtHeaders, mergedRows);
-    updatedRowMap.clear(); // FIX 3: help GC release this memory promptly
+    updatedRowMap.clear();
   }
 
   return stats;
@@ -981,9 +1091,11 @@ async function _syncAgentQL(agent, userRoleMap, triggerMap) {
   // Log the active rule so it's visible in Render logs
   const ruleDesc = (() => {
     if (agent.qualificationRules?.length) {
-      return agent.qualificationRules.map(r =>
-        `${r.field} contains [${(r.keywords||[]).join('|')}]`
-      ).join(' AND ');
+      return agent.qualificationRules.map(r => {
+        const inc = (r.keywords||[]).join('|') || 'any';
+        const exc = (r.excludeKeywords||[]).join('|');
+        return `${r.field} includes[${inc}]${exc ? ` excludes[${exc}]` : ''}`;
+      }).join(' AND ');
     }
     if (agent.qualificationField) {
       const vals = agent.qualificationValues || [];
@@ -1053,19 +1165,30 @@ async function _refreshCampaignTracker(agent, agentSsId, mtHeaders, mtRows) {
     const reqIdCol  = mtHeaders.indexOf('Request ID');
     const statusCol = mtHeaders.indexOf('Status');
     const durCol    = mtHeaders.indexOf('Duration (Minutes)');
+    const abiCol    = mtHeaders.indexOf('Answered By');   // for connected count
     const ctReqCol  = ctHeaders.indexOf('Request ID');
+    const ccIdx     = ctHeaders.indexOf('Contacts Count'); // campaign target from CT row
 
     const stats = {};
     mtRows.forEach(r => {
       const rid = String(r[reqIdCol] || '');
       if (!rid) return;
-      if (!stats[rid]) stats[rid] = { total: 0, completed: 0, notConnected: 0, failed: 0, minutes: 0, qualified: 0 };
+      if (!stats[rid]) stats[rid] = { total: 0, completed: 0, notConnected: 0, failed: 0, minutes: 0, qualified: 0, connected: 0 };
       stats[rid].total++;
       const s = String(r[statusCol] || '').toUpperCase();
-      if (s === 'COMPLETED')  { stats[rid].completed++; }
+      if (s === 'COMPLETED') {
+        stats[rid].completed++;
+        stats[rid].minutes += Number(r[durCol] || 0);
+        // Connected = call was actually answered (Answered By non-empty).
+        // Falls back to counting all COMPLETED if the column is absent.
+        if (abiCol >= 0) {
+          if (String(r[abiCol] || '').trim()) stats[rid].connected++;
+        } else {
+          stats[rid].connected++;
+        }
+      }
       if (s === 'NOT_CONNECTED') stats[rid].notConnected++;
       if (s === 'FAILED' || s === 'CANCELLED') stats[rid].failed++;
-      stats[rid].minutes += Number(r[durCol] || 0);
     });
 
     // Count QL per request
@@ -1078,28 +1201,37 @@ async function _refreshCampaignTracker(agent, agentSsId, mtHeaders, mtRows) {
       });
     }
 
-    const ctStatusColIdx = ctHeaders.indexOf('Status');
     const updates = [];
     ctRows.forEach((r, idx) => {
       const rid = String(r[ctReqCol] || '');
       const s = stats[rid];
       if (!s) return;
+
+      // FIX: use Contacts Count from CT row as the completion target.
+      // s.total is only the rows currently seeded in MT — if seeding is still
+      // in progress done >= s.total would mark COMPLETED prematurely.
+      const contactsTarget = ccIdx >= 0 && Number(r[ccIdx] || 0) > 0
+        ? Number(r[ccIdx])
+        : s.total;
+
       const done = s.completed + s.notConnected + s.failed;
-      const newStatus = done >= s.total ? 'COMPLETED' : 'IN_PROGRESS';
+      const newStatus = done >= contactsTarget && s.total >= contactsTarget
+        ? 'COMPLETED'
+        : 'IN_PROGRESS';
+
       const newRow = [...r];
       const set = (name, val) => { const k = ctHeaders.indexOf(name); if (k >= 0) newRow[k] = val; };
-      set('Status',       newStatus);
-      set('Completed',    s.completed);
-      set('Connected',    s.completed);
+      set('Status',        newStatus);
+      set('Completed',     s.completed);
+      set('Connected',     s.connected);   // FIX: actual answered count
       set('Not Connected', s.notConnected);
-      set('Failed',       s.failed);
-      set('Qualified',    s.qualified);
+      set('Failed',        s.failed);
+      set('Qualified',     s.qualified);
       set('Actual Minutes', Math.round(s.minutes * 100) / 100);
-      set('Last Updated', new Date().toISOString());
+      set('Last Updated',  new Date().toISOString());
       updates.push({ rowIndex: idx + 2, values: newRow });
     });
 
-    // Single batchWriteRows call instead of N individual writes (quota fix)
     if (updates.length) {
       await batchWriteRows(agent.spreadsheetId || MAIN_SS_ID, ctName, updates);
     }
@@ -1201,6 +1333,15 @@ async function _backfillAgent(agent) {
   const customVars   = agent.customVariables || [];
 
   if (callIdCol < 0 || !resultFields.length) return { missing: 0, filled: 0 };
+
+  // Skip backfill if the agent has qualification rules defined.
+  // Qualification rules work on result data already present in the MT row —
+  // if result fields are empty the call won't qualify anyway, so fetching again
+  // is redundant. Backfill is only meaningful for agents with no qual rules where
+  // we need the raw result data for manual review.
+  const hasQualRules = (agent.qualificationRules && agent.qualificationRules.length > 0) ||
+                       (agent.qualificationField && agent.qualificationField.trim());
+  if (hasQualRules) return { missing: 0, filled: 0 };
 
   const { headers: qlHeaders, rows: qlRows } = await readSheet(agent.spreadsheetId || MAIN_SS_ID, qlName);
   const qlCallIdCol  = qlHeaders.indexOf('Call ID');
@@ -1830,6 +1971,129 @@ async function _seedMasterTracker(agent, createdCalls, requestId, triggeredBy) {
 // fetches ALL non-terminal rows with no cap — cleans up end-of-day stragglers
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─── Dashboard Cache Rebuild (runs after EOD sweep) ──────────────────────────
+// Scans ALL active agent MT + QL sheets and writes fresh rows to _Dashboard_Cache.
+// Equivalent to GAS forceRebuildAllCaches() but runs entirely in Node.
+// Columns: Date|Team|Agent Code|Triggered By|Request ID|Calls|Minutes|Qualified|Lineup|Updated At|Connected
+
+const DASH_CACHE_SHEET = '_Dashboard_Cache';
+const DASH_CACHE_H = ['Date','Team','Agent Code','Triggered By','Request ID','Calls','Minutes','Qualified','Lineup','Updated At','Connected'];
+
+async function _rebuildDashboardCache() {
+  console.log('[rebuildCache] Starting _Dashboard_Cache rebuild…');
+  const t0 = Date.now();
+
+  const agents = (await getAllAgents()).filter(a => a.active && a.spreadsheetId);
+  const users  = await getAllUsers();
+  const umap   = {};
+  users.forEach(u => { umap[u.email.toLowerCase()] = u; });
+
+  // Build trigger maps
+  const trigMap  = {}; // agentCode|reqId → email
+  const trigTeam = {}; // agentCode|reqId → team
+  try {
+    const { headers: th, rows: tr } = await readSheet(MAIN_SS_ID, PORTAL.TRIGGER_LOG);
+    if (th.length) {
+      const ei = th.indexOf('User Email'), ai = th.indexOf('Agent Code');
+      const ri = th.indexOf('Request ID'), ti = th.indexOf('Team');
+      tr.forEach(r => {
+        const key = String(r[ai] || '') + '|' + String(r[ri] || '');
+        if (ei >= 0) trigMap[key]  = String(r[ei] || '').toLowerCase();
+        if (ti >= 0) trigTeam[key] = String(r[ti] || '');
+      });
+    }
+  } catch (e) { console.warn('[rebuildCache] TriggerLog read failed:', e.message); }
+
+  const CUTOFF_DAYS = 60; // keep 60 days of history
+  const cutoffStr = new Date(Date.now() - CUTOFF_DAYS * 86400_000)
+    .toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
+  const agg = {}; // key → { date, team, agent, email, reqId, calls, minutes, qualified, lineup, connected }
+
+  // Dedupe by spreadsheetId
+  const seen = new Set();
+  const deduped = agents.filter(a => {
+    if (!a.spreadsheetId || seen.has(a.spreadsheetId)) return false;
+    seen.add(a.spreadsheetId); return true;
+  });
+
+  for (const agent of deduped) {
+    try {
+      // ── Master Tracker ────────────────────────────────────────────────────
+      const { headers: mh, rows: mr } = await readSheet(agent.spreadsheetId, AGT.MASTER_TRACKER);
+      if (!mh.length) continue;
+      const si  = mh.indexOf('Status'), ri = mh.indexOf('Request ID');
+      const di  = mh.indexOf('Duration (Minutes)');
+      const sai = mh.indexOf('Started At'), cai = mh.indexOf('Created At');
+      const abi = mh.indexOf('Answered By');
+      const rf  = resultFieldNames(agent.resultSchema);
+
+      mr.forEach(row => {
+        if (String(row[si] || '').toUpperCase() !== 'COMPLETED') return;
+        const reqId = ri >= 0 ? String(row[ri] || '').trim() : '';
+        const email = trigMap[agent.agentCode + '|' + reqId] || '';
+        const team  = trigTeam[agent.agentCode + '|' + reqId] || umap[email]?.team || '';
+        const dv = (sai >= 0 ? row[sai] : null) || (cai >= 0 ? row[cai] : null);
+        if (!dv) return;
+        let d; try { d = new Date(dv); if (isNaN(d.getTime())) return; } catch (_) { return; }
+        const dateStr = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+        if (dateStr < cutoffStr) return;
+
+        const key = `${dateStr}|${team}|${agent.agentCode}|${email}|${reqId}`;
+        if (!agg[key]) agg[key] = { date: dateStr, team, agent: agent.agentCode, email, reqId, calls: 0, minutes: 0, qualified: 0, lineup: 0, connected: 0 };
+        agg[key].calls++;
+        agg[key].minutes += Number(row[di] || 0);
+        const isConn = abi >= 0 ? !!String(row[abi] || '').trim() : true;
+        if (isConn) agg[key].connected++;
+
+        const result = {};
+        rf.forEach(f => { const col = mh.indexOf('out.' + f); result[f] = col >= 0 ? row[col] : ''; });
+        if (isQualified(agent, result)) agg[key].qualified++;
+      });
+
+      await sleep(300);
+
+      // ── Qualified Leads ───────────────────────────────────────────────────
+      const { headers: qh, rows: qr } = await readSheet(agent.spreadsheetId, AGT.QUALIFIED_LEADS);
+      if (!qh.length) continue;
+      const fbi = qh.indexOf('Feedback'), qri = qh.indexOf('Request ID');
+      const qai = qh.indexOf('Assigned To Email'), qda = qh.indexOf('Date Added');
+
+      qr.forEach(row => {
+        const fb = String(fbi >= 0 ? row[fbi] || '' : '').toLowerCase();
+        if (!fb.includes('interview lined up') && !fb.includes('interested: interview') &&
+            !fb.includes('interested - interview') && !fb.includes('interested \u2013 interview')) return;
+        const reqId = qri >= 0 ? String(row[qri] || '').trim() : '';
+        const email = qai >= 0 ? String(row[qai] || '').toLowerCase() : trigMap[agent.agentCode + '|' + reqId] || '';
+        const team  = trigTeam[agent.agentCode + '|' + reqId] || umap[email]?.team || '';
+        let dateStr = '';
+        if (qda >= 0 && row[qda]) {
+          try { dateStr = new Date(row[qda]).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); } catch (_) {}
+        }
+        const key = `${dateStr}|${team}|${agent.agentCode}|${email}|${reqId}`;
+        if (agg[key]) { agg[key].lineup++; }
+        else { agg[key] = { date: dateStr, team, agent: agent.agentCode, email, reqId, calls: 0, minutes: 0, qualified: 0, lineup: 1, connected: 0 }; }
+      });
+
+      await sleep(300);
+    } catch (e) { console.warn(`[rebuildCache] Error on ${agent.agentCode}:`, e.message); }
+  }
+
+  // Write to _Dashboard_Cache
+  await ensureSheet(MAIN_SS_ID, DASH_CACHE_SHEET, DASH_CACHE_H, '#1a6fdc');
+  await clearRange(MAIN_SS_ID, `'${DASH_CACHE_SHEET}'!A2:Z`);
+  const now = new Date().toISOString();
+  const cacheRows = Object.values(agg).map(r => [
+    r.date, r.team, r.agent, r.email, r.reqId,
+    r.calls, Math.round(r.minutes * 100) / 100, r.qualified, r.lineup, now, r.connected,
+  ]);
+  if (cacheRows.length) await appendRows(MAIN_SS_ID, DASH_CACHE_SHEET, cacheRows);
+
+  const elapsed = Math.round((Date.now() - t0) / 1000);
+  console.log(`[rebuildCache] Done in ${elapsed}s — ${cacheRows.length} rows, ${deduped.length} agents`);
+  return { rowsWritten: cacheRows.length, agentsScanned: deduped.length, elapsed };
+}
+
 async function eodSweep() {
   if (pollRunning) {
     console.log('[eod] Poll running — will retry next trigger.');
@@ -1994,9 +2258,10 @@ async function startPoller() {
     process.exit(1);
   }
 
-  // Poll every 3 minutes (was 2 min — reduced to give Sheets quota more recovery time
-  // between cycles; with 9 agents and sequential scanning the cycle itself takes ~60-90s)
-  cron.schedule('*/3 * * * *', async () => {
+  // Poll every 5 min.
+  // 8am–8pm IST: live calls only (INITIATED/IN_PROGRESS/RINGING), caps 25/8
+  // 8pm–8am IST: NC+FAILED after-hours sweep, caps 40/15 — backlog clears overnight
+  cron.schedule('*/5 * * * *', async () => {
     try { await pollActiveBatches(); } catch (e) { console.error('[cron:poll]', e.message); }
   });
 
@@ -2005,16 +2270,9 @@ async function startPoller() {
     try { await backfillMissingOutputs(); } catch (e) { console.error('[cron:backfill]', e.message); }
   });
 
-  // Auto-qualify every 10 minutes (offset 4 min to avoid colliding with poll + backfill)
-  // Reads qualification rules LIVE from Agents sheet — no restart needed when rules change.
-  cron.schedule('4,14,24,34,44,54 * * * *', async () => {
-    try { await autoQualifyLeads(); } catch (e) { console.error('[cron:qualify]', e.message); }
-  });
-
-  // Repair unassigned leads every 20 minutes
-  cron.schedule('*/20 * * * *', async () => {
-    try { await repairUnassignedLeads(); } catch (e) { console.error('[cron:repair]', e.message); }
-  });
+  // autoQualifyLeads + repairUnassignedLeads removed from Node cron.
+  // GAS now handles QL push, NC push, and CT refresh every 5 min (gas_background.js).
+  // This eliminates ~14 extra Sheets reads per 30-min cycle from the service-account quota.
 
   // Cleanup sessions every hour
   cron.schedule('0 * * * *', async () => {
@@ -2022,25 +2280,11 @@ async function startPoller() {
   });
 
   // Daily jobs in IST (cron uses UTC, IST = UTC+5:30)
-  // 1am IST = 19:30 UTC previous day
-  cron.schedule('30 19 * * *', async () => {
-    try { await dedupeAllSheets(); } catch (e) { console.error('[cron:dedupe]', e.message); }
-  });
-
-  // 2am IST = 20:30 UTC previous day
-  cron.schedule('30 20 * * *', async () => {
-    try { await archiveCompletedLeads(); } catch (e) { console.error('[cron:archLeads]', e.message); }
-  });
-
-  // 3am IST = 21:30 UTC previous day
-  cron.schedule('30 21 * * *', async () => {
-    try { await archiveCompletedMT(); } catch (e) { console.error('[cron:archMT]', e.message); }
-  });
-
-  // 4am IST = 22:30 UTC previous day
-  cron.schedule('30 22 * * *', async () => {
-    try { await archiveManualTracker(); } catch (e) { console.error('[cron:archManual]', e.message); }
-  });
+  // NOTE: dedupeAllSheets, archiveCompletedLeads, archiveCompletedMT, archiveManualTracker
+  // have been removed from the Node cron. Reasons:
+  //   • Archive: no longer needed — each agent/team has its own SS; data doesn't overflow
+  //   • Dedupe: moved to GAS (gas_background.js) where it runs on Google quota
+  // These functions are kept in code for manual invocation if needed but NOT scheduled.
 
   // 11am IST = 5:30 UTC
   cron.schedule('30 5 * * *', async () => {
@@ -2052,14 +2296,47 @@ async function startPoller() {
   // 9pm IST = 15:30 UTC — end of day sweep, all active campaigns fully updated
   cron.schedule('30 15 * * *', async () => {
     try { await eodSweep(); } catch (e) { console.error('[cron:eod]', e.message); }
+    // After EOD sweep finishes, rebuild dashboard cache so tomorrow's dashboard
+    // reflects today's completed data from all agent sheets
+    await sleep(120_000); // wait 2 min for eodSweep writes to settle
+    try {
+      console.log('[cron:eod] Triggering dashboard cache rebuild after EOD sweep…');
+      // Fire the rebuild via the server's forcerebuilddashboard action
+      const axios = require('axios');
+      const PORT  = process.env.PORT || 10000;
+      const { readSheet: _rs } = require('./sheets');
+      // Rebuild cache by reading all agents inline (avoids circular dependency)
+      await _rebuildDashboardCache();
+    } catch (e) { console.error('[cron:eod-cache]', e.message); }
   });
 
   console.log('[poller] All 11 jobs scheduled ✓');
 
-  // Run poll immediately on startup
+  // Delay startup poll by 3 min — lets the server handle user traffic first
+  // and avoids quota storms from simultaneous agent scans on every restart.
+  console.log('[poller] Startup poll deferred 3 min to avoid quota storm on boot.');
   setTimeout(() => {
     pollActiveBatches().catch(e => console.error('[startup poll]', e.message));
-  }, 5000);
+  }, 3 * 60 * 1000);
+}
+
+/**
+ * Schedule a targeted poll for a single agent after a delay.
+ * Called after a campaign is triggered so results are fetched promptly
+ * without waiting for the next full 5-min poll cycle.
+ *
+ * @param {string} agentCode  The agent to poll
+ * @param {number} delayMs    Milliseconds to wait before polling (default 10 min)
+ */
+function scheduleAgentPoll(agentCode, delayMs = 10 * 60 * 1000) {
+  setTimeout(async () => {
+    try {
+      console.log(`[scheduleAgentPoll] Running targeted poll for ${agentCode}`);
+      await pollActiveBatches(agentCode);
+    } catch (e) {
+      console.error(`[scheduleAgentPoll] Error polling ${agentCode}:`, e.message);
+    }
+  }, delayMs);
 }
 
 module.exports = {
@@ -2083,4 +2360,6 @@ module.exports = {
   getAllAgents,
   getAllUsers,
   getAllTeams,
+  scheduleAgentPoll,
+  registerFreshCampaign,
 };

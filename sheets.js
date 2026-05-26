@@ -171,10 +171,14 @@ async function ensureSheet(spreadsheetId, sheetName, headers = [], color = null)
   if (!existing) {
     const sheets = getSheetsClient();
     const addReq = { addSheet: { properties: { title: sheetName } } };
-    await withRetry(() => sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: { requests: [addReq] },
-    }));
+    try {
+      await withRetry(() => sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: { requests: [addReq] },
+      }));
+    } catch (err) {
+      if (!(err.message || '').toLowerCase().includes('already exists')) throw err;
+    }
     if (headers.length) {
       await appendRows(spreadsheetId, sheetName, [headers]);
       if (color) {
