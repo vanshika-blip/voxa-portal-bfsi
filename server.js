@@ -1380,7 +1380,8 @@ async function handlePassToQL(actor, body) {
   return { ok: true };
 }
 
-// ─── Master Tracker / Not Connected ───────────────────────────────────────────async function handleGetMasterTracker(actor, body) {
+// ─── Master Tracker / Not Connected ───────────────────────────────────────────
+async function handleGetMasterTracker(actor, body) {
   const agentCode = String(body.agentCode || '').trim();
   if (!agentCode) return { ok: false, error: 'AGENT_CODE_REQUIRED' };
   const agent = await findAgent(agentCode);
