@@ -1380,16 +1380,27 @@ async function handlePassToQL(actor, body) {
   return { ok: true };
 }
 
-// ─── Master Tracker / Not Connected ───────────────────────────────────────────
-async function handleGetMasterTracker(actor, body) {
+// ─── Master Tracker / Not Connected ───────────────────────────────────────────async function handleGetMasterTracker(actor, body) {
   const agentCode = String(body.agentCode || '').trim();
   if (!agentCode) return { ok: false, error: 'AGENT_CODE_REQUIRED' };
   const agent = await findAgent(agentCode);
   if (!agent || !agent.spreadsheetId) return { ok: false, error: 'AGENT_NOT_FOUND' };
-  const usersVis = await getAllUsers();
-  const { headers, rows } = await readSheet(agent.spreadsheetId, AGT.MT);
   const reqId = String(body.requestId || '');
-  let result  = rows.map(r => { const o = {}; headers.forEach((h, i) => { o[h] = r[i]; }); return o; });
+
+  // Read live Master_Tracker
+  const { headers, rows } = await readSheet(agent.spreadsheetId, AGT.MT);
+  let result = rows.map(r => { const o = {}; headers.forEach((h, i) => { o[h] = r[i]; }); return o; });
+
+  // Also read Master_Tracker_Archive — rows get moved here after campaigns complete,
+  // so without this merge, completed campaigns show "No completed calls yet".
+  try {
+    const { headers: ah, rows: ar } = await readSheet(agent.spreadsheetId, 'Master_Tracker_Archive');
+    if (ah.length && ar.length) {
+      const archRows = ar.map(r => { const o = {}; ah.forEach((h, i) => { o[h] = r[i]; }); return o; });
+      result = [...result, ...archRows];
+    }
+  } catch (_) {}
+
   if (reqId) result = result.filter(r => String(r['Request ID'] || '') === reqId);
   return { ok: true, rows: result, headers };
 }
@@ -1586,8 +1597,14 @@ async function handleGetDashboard(actor, body) {
     for (const a of dedupeAgentsBySsId(vis)) {
       if (!a.spreadsheetId) continue;
       try {
-        const { headers: mh, rows: mr } = await readSheet(a.spreadsheetId, AGT.MT);
-        if (!mh.length) continue;
+        const { headers: mh, rows: activeMr } = await readSheet(a.spreadsheetId, AGT.MT);
+if (!mh.length) continue;
+let archMr = [];
+try {
+  const { rows: ar } = await readSheet(a.spreadsheetId, 'Master_Tracker_Archive');
+  archMr = ar;
+} catch(_) {}
+const mr = [...activeMr, ...archMr];
         const ri  = mh.indexOf('Request ID');
         const di  = mh.indexOf('Duration (Minutes)');
         const si  = mh.indexOf('Started At');

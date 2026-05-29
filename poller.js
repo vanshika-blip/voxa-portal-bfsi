@@ -51,12 +51,13 @@ const PORTAL = {
   AUDIT:        'Audit Log',
 };
 const AGT = {
-  CALL_INPUT:       'Call_Input',
-  CAMPAIGN_TRACKER: 'Campaign_Tracker',
-  MASTER_TRACKER:   'Master_Tracker',
-  QUALIFIED_LEADS:  'Qualified_Leads',
-  NOT_CONNECTED:    'Not_Connected',
-  CALLBACKS:        'Callbacks',
+  CALL_INPUT:          'Call_Input',
+  CAMPAIGN_TRACKER:    'Campaign_Tracker',
+  MASTER_TRACKER:      'Master_Tracker',
+  MASTER_TRACKER_ARCH: 'Master_Tracker_Archive',
+  QUALIFIED_LEADS:     'Qualified_Leads',
+  NOT_CONNECTED:       'Not_Connected',
+  CALLBACKS:           'Callbacks',
 };
 const QUEUE = {
   CALLBACK:         '_Callback_Queue',
@@ -573,7 +574,20 @@ async function pollActiveBatches(agentCodeFilter = null) {
     const { headers: trigHeaders, rows: trigRows } = await _getTriggerLog();
     const triggerMap = trigHeaders.length ? buildTriggerMap(trigRows, trigHeaders) : {};
 
-    const targets = agentCodeFilter ? agents.filter(a => a.agentCode === agentCodeFilter) : agents;
+    const seenCodes = new Set();
+    const targets = (agentCodeFilter
+      ? agents.filter(a => a.agentCode === agentCodeFilter)
+      : agents
+    ).filter(a => {
+      // Deduplicate by agentCode — if Agents sheet has duplicate rows,
+      // only process each code once per poll cycle.
+      if (seenCodes.has(a.agentCode)) {
+        console.warn(`[poll] Duplicate agent skipped: ${a.agentCode} — run mergeAgentDuplicates() in GAS to fix permanently`);
+        return false;
+      }
+      seenCodes.add(a.agentCode);
+      return true;
+    });
 
     // ── Adaptive cap calculation ─────────────────────────────────────────────
     // Scan every agent's Master Tracker in parallel (Sheets reads only, zero
@@ -1162,12 +1176,14 @@ async function _refreshCampaignTracker(agent, agentSsId, mtHeaders, mtRows) {
     const { headers: ctHeaders, rows: ctRows } = await readSheet(agent.spreadsheetId || MAIN_SS_ID, ctName);
     if (!ctHeaders.length || !ctRows.length) return;
 
-    const reqIdCol  = mtHeaders.indexOf('Request ID');
-    const statusCol = mtHeaders.indexOf('Status');
+    try {
+  const { rows: ar } = await readSheet(agentSsId, AGT.MASTER_TRACKER_ARCH);
+  if (ar.length) mtRows = [...mtRows, ...ar];
+} catch(_) {}
+const reqIdCol  = mtHeaders.indexOf('Request ID');
+const statusCol = mtHeaders.indexOf('Status');
     const durCol    = mtHeaders.indexOf('Duration (Minutes)');
-    const abiCol    = mtHeaders.indexOf('Answered By');   // for connected count
     const ctReqCol  = ctHeaders.indexOf('Request ID');
-    const ccIdx     = ctHeaders.indexOf('Contacts Count'); // campaign target from CT row
 
     const stats = {};
     mtRows.forEach(r => {
@@ -1179,13 +1195,7 @@ async function _refreshCampaignTracker(agent, agentSsId, mtHeaders, mtRows) {
       if (s === 'COMPLETED') {
         stats[rid].completed++;
         stats[rid].minutes += Number(r[durCol] || 0);
-        // Connected = call was actually answered (Answered By non-empty).
-        // Falls back to counting all COMPLETED if the column is absent.
-        if (abiCol >= 0) {
-          if (String(r[abiCol] || '').trim()) stats[rid].connected++;
-        } else {
-          stats[rid].connected++;
-        }
+        stats[rid].connected++; // ← CHANGED: always same as completed
       }
       if (s === 'NOT_CONNECTED') stats[rid].notConnected++;
       if (s === 'FAILED' || s === 'CANCELLED') stats[rid].failed++;
@@ -1207,28 +1217,24 @@ async function _refreshCampaignTracker(agent, agentSsId, mtHeaders, mtRows) {
       const s = stats[rid];
       if (!s) return;
 
-      // FIX: use Contacts Count from CT row as the completion target.
-      // s.total is only the rows currently seeded in MT — if seeding is still
-      // in progress done >= s.total would mark COMPLETED prematurely.
-      const contactsTarget = ccIdx >= 0 && Number(r[ccIdx] || 0) > 0
-        ? Number(r[ccIdx])
-        : s.total;
+      // ← ADD: FREEZE — never re-edit a campaign already COMPLETED
+      const currentStatus = String(r[ctHeaders.indexOf('Status')] || '').toUpperCase();
+      if (currentStatus === 'COMPLETED') return;
 
       const done = s.completed + s.notConnected + s.failed;
-      const newStatus = done >= contactsTarget && s.total >= contactsTarget
-        ? 'COMPLETED'
-        : 'IN_PROGRESS';
+      const newStatus = done >= s.total ? 'COMPLETED' : 'IN_PROGRESS'; // ← CHANGED: use s.total directly
 
       const newRow = [...r];
       const set = (name, val) => { const k = ctHeaders.indexOf(name); if (k >= 0) newRow[k] = val; };
-      set('Status',        newStatus);
-      set('Completed',     s.completed);
-      set('Connected',     s.connected);   // FIX: actual answered count
-      set('Not Connected', s.notConnected);
-      set('Failed',        s.failed);
-      set('Qualified',     s.qualified);
-      set('Actual Minutes', Math.round(s.minutes * 100) / 100);
-      set('Last Updated',  new Date().toISOString());
+      set('Contacts Count',  s.total);       // ← ADD: always from MT
+      set('Status',          newStatus);
+      set('Completed',       s.completed);
+      set('Connected',       s.completed);   // ← CHANGED: same as completed
+      set('Not Connected',   s.notConnected);
+      set('Failed',          s.failed);
+      set('Qualified',       s.qualified);
+      set('Actual Minutes',  Math.round(s.minutes * 100) / 100);
+      set('Last Updated',    new Date().toISOString());
       updates.push({ rowIndex: idx + 2, values: newRow });
     });
 
@@ -1321,10 +1327,11 @@ async function backfillMissingOutputs(agentCodeFilter = null) {
 }
 
 async function _backfillAgent(agent) {
+  const ssId   = agent.spreadsheetId || MAIN_SS_ID;
   const mtName = agent.spreadsheetId ? AGT.MASTER_TRACKER : (agent.agentCode + AGT.MASTER_TRACKER);
   const qlName = agent.spreadsheetId ? AGT.QUALIFIED_LEADS : (agent.agentCode + AGT.QUALIFIED_LEADS);
 
-  const { headers: mtHeaders, rows: mtRows } = await readSheet(agent.spreadsheetId || MAIN_SS_ID, mtName);
+  const { headers: mtHeaders, rows: mtRows } = await readSheet(ssId, mtName);
   if (!mtHeaders.length) return { missing: 0, filled: 0 };
 
   const callIdCol    = mtHeaders.indexOf('Call ID');
@@ -1334,17 +1341,14 @@ async function _backfillAgent(agent) {
 
   if (callIdCol < 0 || !resultFields.length) return { missing: 0, filled: 0 };
 
-  // Skip backfill if the agent has qualification rules defined.
-  // Qualification rules work on result data already present in the MT row —
-  // if result fields are empty the call won't qualify anyway, so fetching again
-  // is redundant. Backfill is only meaningful for agents with no qual rules where
-  // we need the raw result data for manual review.
-  const hasQualRules = (agent.qualificationRules && agent.qualificationRules.length > 0) ||
-                       (agent.qualificationField && agent.qualificationField.trim());
+  // Skip backfill for agents with qualification rules — result data is
+  // already being handled by the poll + autoQualify cycle.
+  const hasQualRules = (agent.qualificationRules?.length > 0) ||
+                       (agent.qualificationField?.trim());
   if (hasQualRules) return { missing: 0, filled: 0 };
 
-  const { headers: qlHeaders, rows: qlRows } = await readSheet(agent.spreadsheetId || MAIN_SS_ID, qlName);
-  const qlCallIdCol  = qlHeaders.indexOf('Call ID');
+  const { headers: qlHeaders, rows: qlRows } = await readSheet(ssId, qlName);
+  const qlCallIdCol = qlHeaders.indexOf('Call ID');
   const qlRowByCallId = {};
   if (qlCallIdCol >= 0) {
     qlRows.forEach((r, i) => {
@@ -1355,14 +1359,17 @@ async function _backfillAgent(agent) {
 
   let missing = 0, filled = 0;
 
+  // ── Collect updates — flush in ONE batch at the end ───────────────────────
+  const mtUpdates = []; // { rowIndex, values }
+  const qlUpdates = []; // { rowIndex, values }
+
   for (let i = 0; i < mtRows.length; i++) {
-    const row = mtRows[i];
+    const row    = mtRows[i];
     const callId = String(row[callIdCol] || '').trim();
     const status = String(row[statusCol] || '').toUpperCase();
 
     if (!callId || status !== 'COMPLETED') continue;
 
-    // Check if result data already exists
     const hasResult = resultFields.some(f => {
       const col = mtHeaders.indexOf('out.' + f);
       return col >= 0 && String(row[col] || '').trim() !== '';
@@ -1370,48 +1377,179 @@ async function _backfillAgent(agent) {
     if (hasResult) continue;
 
     missing++;
+
+    // Hunar API call — still needs per-call sleep for Hunar rate limit
     const r = await getCall(callId);
     if (!r.ok) continue;
 
-    const d = r.data;
+    const d      = r.data;
     const result = d.result || {};
     const newRow = [...row];
-    const setH = (name, val) => { const k = mtHeaders.indexOf(name); if (k >= 0) newRow[k] = val; };
+    const setH   = (name, val) => {
+      const k = mtHeaders.indexOf(name);
+      if (k >= 0) newRow[k] = val;
+    };
 
     setH('Duration (Minutes)', d.duration_minutes ?? 0);
     setH('Duration (Seconds)', d.duration_seconds ?? 0);
     setH('Started At',         d.started_at || '');
-    setH('Ended At',           d.ended_at || '');
+    setH('Ended At',           d.ended_at   || '');
     setH('Answered By',        d.answered_by || '');
     setH('Engagement Status',  d.engagement_status || '');
     setH('Call Ended By',      d.call_ended_by || '');
     setH('Recording URL',      d.recording_url || '');
     setH('Updated At',         new Date().toISOString());
-    customVars.forEach(cv => { if (d.custom_data?.[cv] !== undefined) setH('in.' + cv, d.custom_data[cv]); });
-    resultFields.forEach(f => { setH('out.' + f, result[f] !== undefined ? result[f] : ''); });
+    customVars.forEach(cv => {
+      if (d.custom_data?.[cv] !== undefined) setH('in.' + cv, d.custom_data[cv]);
+    });
+    resultFields.forEach(f => {
+      setH('out.' + f, result[f] !== undefined ? result[f] : '');
+    });
 
-    await writeRow(agent.spreadsheetId || MAIN_SS_ID, mtName, i + 2, newRow);
+    mtUpdates.push({ rowIndex: i + 2, values: newRow });
     filled++;
 
-    // Mirror to QL if this call is there
+    // Mirror to QL if this call exists there
     if (qlCallIdCol >= 0 && qlRowByCallId[callId]) {
       const { rowIndex: qlRowIdx, row: qlRow } = qlRowByCallId[callId];
       const newQlRow = [...qlRow];
       let changed = false;
       resultFields.forEach(f => {
         const col = qlHeaders.indexOf('out.' + f);
-        if (col >= 0 && String(newQlRow[col] || '').trim() === '' && result[f] !== undefined) {
+        if (col >= 0 && String(newQlRow[col] || '').trim() === '' &&
+            result[f] !== undefined) {
           newQlRow[col] = result[f];
           changed = true;
         }
       });
-      if (changed) await writeRow(agent.spreadsheetId || MAIN_SS_ID, qlName, qlRowIdx, newQlRow);
+      if (changed) qlUpdates.push({ rowIndex: qlRowIdx, values: newQlRow });
     }
 
+    // Hunar rate limit — sleep between each API call
+    // (This is unavoidable — it's a per-Hunar-request throttle, not Sheets.)
     await sleep(400);
   }
 
+  // ── BATCH WRITE — N rows = 1 Sheets API call (was N calls) ───────────────
+  if (mtUpdates.length) {
+    for (let i = 0; i < mtUpdates.length; i += 100) {
+      await batchWriteRows(ssId, mtName, mtUpdates.slice(i, i + 100));
+      if (i + 100 < mtUpdates.length) await sleep(500);
+    }
+  }
+  if (qlUpdates.length) {
+    for (let i = 0; i < qlUpdates.length; i += 100) {
+      await batchWriteRows(ssId, qlName, qlUpdates.slice(i, i + 100));
+      if (i + 100 < qlUpdates.length) await sleep(500);
+    }
+  }
+
   return { missing, filled };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// archiveCompletedCampaignMT — moves completed-campaign rows from
+// Master_Tracker → Master_Tracker_Archive (per-agent spreadsheets only).
+// Called by /admin/archivemt endpoint and the weekly Sunday 9pm IST cron.
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function archiveCompletedCampaignMT(agentCodeFilter = null) {
+  console.log('[mt-archive] Starting Master_Tracker archive run…');
+  const agents  = (await getAllAgents()).filter(a => a.active && a.spreadsheetId);
+  const targets = agentCodeFilter
+    ? agents.filter(a => a.agentCode === agentCodeFilter)
+    : agents;
+
+  // Deduplicate by spreadsheetId — if two agent rows share the same SS,
+  // process the sheet once to avoid double-archiving row indices.
+  const seenSS = new Set();
+  const deduped = targets.filter(a => {
+    if (seenSS.has(a.spreadsheetId)) return false;
+    seenSS.add(a.spreadsheetId);
+    return true;
+  });
+
+  const cutoff = Date.now() - 24 * 3600 * 1000; // 24h grace period
+  let totalMoved = 0;
+
+  for (const agent of deduped) {
+    try {
+      const ssId = agent.spreadsheetId;
+
+      // ── Find COMPLETED campaign request IDs (>24h old) ───────────────────
+      const { headers: ctH, rows: ctRows } = await readSheet(ssId, AGT.CAMPAIGN_TRACKER);
+      if (!ctH.length) continue;
+
+      const riCol = ctH.indexOf('Request ID');
+      const stCol = ctH.indexOf('Status');
+      const luCol = ctH.indexOf('Last Updated');
+      if (riCol < 0 || stCol < 0) continue;
+
+      const completedReqIds = new Set();
+      ctRows.forEach(r => {
+        if (String(r[stCol] || '').toUpperCase() !== 'COMPLETED') return;
+        if (luCol >= 0 && r[luCol]) {
+          try { if (new Date(r[luCol]).getTime() > cutoff) return; } catch(_) {}
+        }
+        const rid = String(r[riCol] || '').trim();
+        if (rid) completedReqIds.add(rid);
+      });
+
+      if (!completedReqIds.size) continue;
+
+      // ── Read active Master_Tracker ────────────────────────────────────────
+      const { headers: mtH, rows: mtRows } = await readSheet(ssId, AGT.MASTER_TRACKER);
+      if (!mtH.length || !mtRows.length) continue;
+
+      const mtReqCol = mtH.indexOf('Request ID');
+      const mtStCol  = mtH.indexOf('Status');
+      if (mtReqCol < 0) continue;
+
+      // Safety: don't archive campaigns that still have live rows in MT
+      const LIVE = new Set(['INITIATED','IN_PROGRESS','RINGING','NOT_STARTED','SCHEDULED']);
+      const liveCampaigns = new Set();
+      mtRows.forEach(row => {
+        const s   = String(row[mtStCol] || '').toUpperCase();
+        const rid = String(row[mtReqCol] || '').trim();
+        if (rid && LIVE.has(s)) liveCampaigns.add(rid);
+      });
+
+      // ── Ensure archive sheet exists ───────────────────────────────────────
+      await ensureSheet(ssId, AGT.MASTER_TRACKER_ARCH, [...mtH, 'Archived At'], '#7f8c8d');
+
+      const now     = new Date().toISOString();
+      const toMove  = [];
+      const toDelete = [];
+
+      mtRows.forEach((row, i) => {
+        const rid = String(row[mtReqCol] || '').trim();
+        if (!rid) return;
+        if (!completedReqIds.has(rid)) return;
+        if (liveCampaigns.has(rid)) return; // still active — do not archive
+        toMove.push([...row, now]);
+        toDelete.push(i + 2); // 1-based row index
+      });
+
+      if (!toMove.length) continue;
+
+      // Append to archive FIRST, then delete (data-safe ordering)
+      await appendRows(ssId, AGT.MASTER_TRACKER_ARCH, toMove);
+      await deleteRows(ssId, AGT.MASTER_TRACKER, toDelete);
+
+      totalMoved += toMove.length;
+      console.log(
+        `[mt-archive] ${agent.agentCode}: moved ${toMove.length} rows ` +
+        `(${completedReqIds.size} campaigns, ${liveCampaigns.size} still active)`
+      );
+      await sleep(1500);
+
+    } catch(err) {
+      console.error(`[mt-archive] Error on ${agent.agentCode}:`, err.message);
+    }
+  }
+
+  console.log(`[mt-archive] Done — total moved: ${totalMoved}`);
+  return { totalMoved };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2020,8 +2158,15 @@ async function _rebuildDashboardCache() {
   for (const agent of deduped) {
     try {
       // ── Master Tracker ────────────────────────────────────────────────────
-      const { headers: mh, rows: mr } = await readSheet(agent.spreadsheetId, AGT.MASTER_TRACKER);
-      if (!mh.length) continue;
+      const { headers: mh, rows: activeMr } = await readSheet(agent.spreadsheetId, AGT.MASTER_TRACKER);
+if (!mh.length) continue;
+// Also include archived rows so historical dashboard data is preserved
+let archMr = [];
+try {
+  const { rows: ar } = await readSheet(agent.spreadsheetId, AGT.MASTER_TRACKER_ARCH);
+  archMr = ar;
+} catch(_) {}
+const mr = [...activeMr, ...archMr];
       const si  = mh.indexOf('Status'), ri = mh.indexOf('Request ID');
       const di  = mh.indexOf('Duration (Minutes)');
       const sai = mh.indexOf('Started At'), cai = mh.indexOf('Created At');
@@ -2294,10 +2439,8 @@ async function startPoller() {
   });
 
   // 9pm IST = 15:30 UTC — end of day sweep, all active campaigns fully updated
-  cron.schedule('30 15 * * *', async () => {
+cron.schedule('30 15 * * *', async () => {
     try { await eodSweep(); } catch (e) { console.error('[cron:eod]', e.message); }
-    // After EOD sweep finishes, rebuild dashboard cache so tomorrow's dashboard
-    // reflects today's completed data from all agent sheets
     await sleep(120_000); // wait 2 min for eodSweep writes to settle
     try {
       console.log('[cron:eod] Triggering dashboard cache rebuild after EOD sweep…');
@@ -2310,7 +2453,13 @@ async function startPoller() {
     } catch (e) { console.error('[cron:eod-cache]', e.message); }
   });
 
-  console.log('[poller] All 11 jobs scheduled ✓');
+  // Sunday 9pm IST = Sunday 15:30 UTC — weekly MT archive
+  cron.schedule('30 15 * * 0', async () => {
+    try {
+      console.log('[cron:archive] Running weekly MT archive…');
+      await archiveCompletedCampaignMT();
+    } catch(e) { console.error('[cron:archive]', e.message); }
+  });
 
   // Delay startup poll by 3 min — lets the server handle user traffic first
   // and avoids quota storms from simultaneous agent scans on every restart.
@@ -2362,4 +2511,5 @@ module.exports = {
   getAllTeams,
   scheduleAgentPoll,
   registerFreshCampaign,
+archiveCompletedCampaignMT,
 };
