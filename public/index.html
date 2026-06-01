@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="en">
 <head>
@@ -848,7 +849,7 @@ function SetupScreen({ token, onCompleted, goLogin }) {
 // ─────────────────────────────────────────────────────────────
 // SHELL
 // ─────────────────────────────────────────────────────────────
-function Shell({ user, today, onLogout, view, setView, children, onChangePw }) {
+function Shell({ user, setUser, today, onLogout, view, setView, children, onChangePw }) {
   const visible = NAV_ITEMS.filter(n => {
     if(n.superOnly && user.role!=="super_admin") return false;
     if(n.showFor && !n.showFor.includes(user.role)) return false;
@@ -857,6 +858,17 @@ function Shell({ user, today, onLogout, view, setView, children, onChangePw }) {
   });
   const isUnlimited = today && today.unlimited;
   const pct = (!isUnlimited && today) ? Math.min(100,(today.minutesUsed/Math.max(1,today.minutesLimit))*100) : 0;
+  const availableRoles = user.availableRoles || [];
+  const [roleSwitching, setRoleSwitching] = useState(false);
+
+  async function handleRoleSwitch(targetRole) {
+    if (targetRole === user.role || roleSwitching) return;
+    setRoleSwitching(true);
+    const r = await api("switchRole", { targetRole });
+    setRoleSwitching(false);
+    if (r.ok && r.user) setUser(r.user);
+  }
+
   return (
     <div className="t-app">
       <div className="t-topbar">
@@ -874,6 +886,43 @@ function Shell({ user, today, onLogout, view, setView, children, onChangePw }) {
               ) : (
                 <><span>{today.minutesUsed}/{today.minutesLimit}m</span><div className="t-usage-bar"><div className="t-usage-fill" style={{width:pct+"%"}}/></div></>
               )}
+            </div>
+          )}
+          {availableRoles.length > 1 && (
+            <div style={{display:"flex",alignItems:"center",gap:5}}>
+              <span style={{fontSize:9,fontFamily:"var(--fd)",fontWeight:700,letterSpacing:".12em",textTransform:"uppercase",color:"rgba(255,255,255,.4)"}}>Role</span>
+              <select
+                value={user.role}
+                disabled={roleSwitching}
+                onChange={e => handleRoleSwitch(e.target.value)}
+                style={{
+                  background:"rgba(255,255,255,.1)",
+                  border:"1px solid rgba(255,255,255,.2)",
+                  color:"#fff",
+                  fontSize:10,
+                  fontFamily:"var(--fd)",
+                  fontWeight:700,
+                  letterSpacing:".06em",
+                  padding:"3px 22px 3px 8px",
+                  cursor:"pointer",
+                  borderRadius:3,
+                  appearance:"none",
+                  WebkitAppearance:"none",
+                  backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='rgba(255,255,255,.5)'/%3E%3C/svg%3E\")",
+                  backgroundRepeat:"no-repeat",
+                  backgroundPosition:"right 6px center",
+                  backgroundSize:"7px 5px",
+                  opacity: roleSwitching ? 0.5 : 1,
+                  transition:"opacity .15s",
+                }}
+              >
+                {availableRoles.map(r => (
+                  <option key={r} value={r} style={{background:"#1a1a1a",color:"#fff"}}>
+                    {r.replace(/_/g," ").replace(/\b\w/g, c => c.toUpperCase())}
+                  </option>
+                ))}
+              </select>
+              {roleSwitching && <Spin white/>}
             </div>
           )}
           <div className="t-user-av">{(user.name||user.email)[0].toUpperCase()}</div>
@@ -3379,7 +3428,7 @@ function App() {
 
   return (
     <>
-      <Shell user={user} today={today} onLogout={onLogout} view={view} setView={v=>{setView(v);if(v!=="leads")setLeadsFilter(null);}} onChangePw={()=>setShowChangePw(true)}>
+      <Shell user={user} setUser={setUser} today={today} onLogout={onLogout} view={view} setView={v=>{setView(v);if(v!=="leads")setLeadsFilter(null);}} onChangePw={()=>setShowChangePw(true)}>
         {content}
       </Shell>
       {showChangePw && <ChangePasswordModal onClose={()=>setShowChangePw(false)}/>}

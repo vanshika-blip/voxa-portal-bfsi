@@ -33,6 +33,7 @@ const {
   repairUnassignedLeads, cleanupExpiredSessions, dedupeAllSheets,
   archiveCompletedLeads, archiveCompletedMT, archiveManualTracker,
   processCallbackQueue, processRetryQueue,
+  processNotConnectedAutoRetry,
   getArchivedLeads, getArchivedMT, getArchivedManual,
   getStatus,
   scheduleAgentPoll,
@@ -150,6 +151,7 @@ async function getAllUsers(force = false) {
     passwordSalt:     String(r[idx('Password Salt')]      || '').trim(),
     setupToken:       String(r[idx('Setup Token')]        || '').trim(),
     tokenExpires:     r[idx('Setup Token Expires')]       || '',
+    secondaryRole:    String(r[idx('Secondary Role')]     || '').trim().toLowerCase(),
   })).filter(u => u.email);
   _usersCacheAt = Date.now();
   return _usersCache;
@@ -551,7 +553,8 @@ function visibleUserEmails(actor, users) {
 
 function publicUser(u) {
   return { email: u.email, name: u.name, role: u.role, team: u.team,
-    dailyMinuteLimit: u.dailyMinuteLimit, active: u.active, hasPassword: !!u.passwordHash };
+    dailyMinuteLimit: u.dailyMinuteLimit, active: u.active, hasPassword: !!u.passwordHash,
+    secondaryRole: u.secondaryRole || '' };
 }
 
 function publicAgent(a) {
@@ -650,7 +653,7 @@ async function handleLogin(body) {
   if (!verifyPassword(pw, user.passwordSalt, user.passwordHash)) return { ok: false, error: 'INVALID_CREDENTIALS' };
   const token   = _createSessionToken();
   const expires = Date.now() + SESSION_TTL_MS;
-  _sessionCache.set(token, { email: user.email, name: user.name, role: user.role, team: user.team, expires });
+  _sessionCache.set(token, { email: user.email, name: user.name, role: user.role, team: user.team, expires, activeRole: user.role });
   await persistSession(token, user.email, expires);
   audit(user.email, 'login', email, '').catch(() => {});
   return { ok: true, session: token, user: publicUser(user) };
@@ -735,14 +738,60 @@ async function handleChangePassword(actor, body) {
   return { ok: true };
 }
 
+async function handleSwitchRole(actor, body) {
+  const baseRole   = actor._baseRole || actor.role;
+  const targetRole = String(body.targetRole || '').toLowerCase().trim();
+
+  // Define which roles each base role may switch TO (downgrade only)
+  const ALLOWED = {
+    'super_admin':            ['super_admin', 'team_lead'],
+    'team_lead':              ['team_lead', 'recruiter'],
+    'individual_contributor': ['individual_contributor', 'recruiter'],
+  };
+
+  const allowed = ALLOWED[baseRole];
+  if (!allowed) return { ok: false, error: 'ROLE_SWITCH_NOT_AVAILABLE' };
+  if (!allowed.includes(targetRole)) {
+    return { ok: false, error: 'INVALID_ROLE_SWITCH', allowed };
+  }
+
+  // Update in-memory session cache
+  const token = body.session;
+  if (token) {
+    const cached = _sessionCache.get(token);
+    if (cached) {
+      cached.activeRole = targetRole;
+      _sessionCache.set(token, cached);
+    }
+  }
+
+  // Return updated user object with new effective role
+  const freshUser = await findUser(actor.email);
+  const userObj = publicUser(freshUser);
+  userObj.role = targetRole;  // override display role to the switched one
+
+  audit(actor.email, 'switch_role', actor.email, `${baseRole} → ${targetRole}`).catch(() => {});
+  return { ok: true, activeRole: targetRole, user: userObj };
+}
+
 async function handleMe(actor) {
   const [agents, users] = await Promise.all([getAllAgents(), getAllUsers()]);
   const isUnlimited = actor.role === 'super_admin';
   const today = isUnlimited ? { minutes: 0, calls: 0 } : await todayUsageFor(actor.email);
   const vis = agentsVisibleTo(actor, agents, users);
+
+  // Build the list of roles this user can switch to
+  const baseRole = actor._baseRole || actor.role;
+  const SWITCH_MAP = {
+    'super_admin':            ['super_admin', 'team_lead'],
+    'team_lead':              ['team_lead', 'recruiter'],
+    'individual_contributor': ['individual_contributor', 'recruiter'],
+  };
+  const availableRoles = SWITCH_MAP[baseRole] || [baseRole];
+
   return {
     ok: true,
-    user: publicUser(actor),
+    user: Object.assign(publicUser(actor), { role: actor.role }),
     agents: vis.map(publicAgent),
     today: {
       minutesUsed:      isUnlimited ? 0    : Math.round(today.minutes * 100) / 100,
@@ -751,6 +800,9 @@ async function handleMe(actor) {
       callsMade:        today.calls,
       unlimited:        isUnlimited,
     },
+    availableRoles,
+    activeRole: actor.role,
+    baseRole,
   };
 }
 
@@ -2451,6 +2503,30 @@ async function handleForceQualify(actor, body) {
   }
 }
 
+async function handleNcRetry(actor, body) {
+  // Called by GAS ncForceRetryUI → _ncForceRetryForAgent → POST /api {action:'ncretry'}
+  // Also callable directly from the portal admin UI.
+  // Runs NC auto-retry for a single agent (or all agents if no agentCode given).
+  // The actual logic lives in processNotConnectedAutoRetry() in poller.js.
+  if (!isTLLike(actor.role)) return { ok: false, error: 'FORBIDDEN' };
+  const agentCode = String(body.agentCode || '').trim() || null;
+  // Only super_admin may run across all agents; TL/IC must specify an agent
+  if (!agentCode && actor.role !== 'super_admin') return { ok: false, error: 'AGENT_CODE_REQUIRED' };
+  if (agentCode) {
+    const agent = await findAgent(agentCode);
+    if (!agent) return { ok: false, error: 'AGENT_NOT_FOUND' };
+    if (!agent.active) return { ok: false, error: 'AGENT_INACTIVE' };
+  }
+  try {
+    const result = await processNotConnectedAutoRetry(agentCode);
+    audit(actor.email, 'nc_retry', agentCode || 'all', `fired=${result.totalFired}`).catch(() => {});
+    return { ok: true, fired: result.totalFired || 0, groups: result.totalFired || 0, agents: result.agents || 0, agentCode: agentCode || 'all' };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+
 async function handleDedupeNow(actor) {
   if (actor.role !== 'super_admin') return { ok: false, error: 'FORBIDDEN' };
   try { const r = await dedupeAllSheets(); return { ok: true, ...r }; } catch (e) { return { ok: false, error: e.message }; }
@@ -2473,13 +2549,21 @@ async function handleAction(body) {
   // ── Authenticated actions ──
   const sess = await validateSession(body.session);
   if (!sess) return { ok: false, error: 'UNAUTHENTICATED' };
-  const actor = await findUser(sess.email);
-  if (!actor || !actor.active) return { ok: false, error: 'USER_INACTIVE' };
+  const _baseActor = await findUser(sess.email);
+  if (!_baseActor || !_baseActor.active) return { ok: false, error: 'USER_INACTIVE' };
+
+  // Multi-role: apply switched role if set in session cache
+  const _activeRole = sess.activeRole || _baseActor.role;
+  const actor = Object.assign({}, _baseActor, {
+    role:      _activeRole,
+    _baseRole: _baseActor.role,   // always the real stored role (used by switchrole validation)
+  });
 
   switch (action) {
     case 'me':                   return handleMe(actor);
     case 'logout':               return handleLogout(body);
     case 'changepassword':       return handleChangePassword(actor, body);
+    case 'switchrole':           return handleSwitchRole(actor, body);
     case 'listusers':            return handleListUsers(actor);
     case 'upsertuser':           return handleUpsertUser(actor, body);
     case 'resendinvite':         return handleResendInvite(actor, body);
@@ -2523,6 +2607,7 @@ async function handleAction(body) {
     case 'forcequalifyleads':    return handleForceQualify(actor, body);
     case 'pollnow':              return actor.role === 'super_admin' ? (pollActiveBatches().catch(() => {}), { ok: true, message: 'Poll triggered.' }) : { ok: false, error: 'FORBIDDEN' };
     case 'backfillnow':          return actor.role === 'super_admin' ? (backfillMissingOutputs().catch(() => {}), { ok: true, message: 'Backfill triggered.' }) : { ok: false, error: 'FORBIDDEN' };
+    case 'ncretry':              return handleNcRetry(actor, body);
     case 'forcerebuilddashboard': return handleForceRebuildDashboard(actor);
     case 'killjobs':             return { ok: true, message: 'Use Render dashboard to stop the server.' };
     case 'installtriggers':      return { ok: true, message: 'Node handles all background jobs automatically.' };
