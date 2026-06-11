@@ -38,6 +38,10 @@ const {
   getStatus,
   scheduleAgentPoll,
   registerFreshCampaign,
+  archiveCompletedCampaignCT,
+  forceCampaignComplete,
+  checkAndForceComplete27h,
+  processWebhookCallSummary,
 } = require('./poller');
 
 const app  = express();
@@ -1140,6 +1144,13 @@ async function handleUploadContacts(actor, body) {
       return { callee_name: String(r.callee_name || '').trim(), mobile_number: String(r.mobile_number || '').trim(), custom_data: cd };
     }),
     remove_invalid_rows: true, remove_duplicate_phone_numbers: true, timezone: IST_TZ,
+    // Webhook: Hunar fires call_summary once when lifecycle completes (all retries done).
+    // This is the fast path — poller remains the safety net for any missed events.
+    ...(process.env.WEBHOOK_BASE_URL ? {
+      callback_config: {
+        call_summary_callback_url: `${process.env.WEBHOOK_BASE_URL}/webhook/hunar/call-summary`,
+      },
+    } : {}),
   };
 
   const apiRes = await hunarPost('/external/v1/calls/bulk/', payload);
@@ -1180,7 +1191,9 @@ async function handleUploadContacts(actor, body) {
       const set = (n, v) => { const k = mtH.indexOf(n); if (k >= 0) row[k] = v; };
       set('Call ID', cid); set('Request ID', c.request_id || reqId);
       set('Callee Name', c.callee_name || ''); set('Mobile Number', c.mobile_number || '');
-      set('Status', c.status || 'INITIATED'); set('Triggered By', actor.email);
+      set('Status', c.status || 'INITIATED');
+      set('Lifecycle Status', 'IN_PROGRESS'); // all calls start with lifecycle IN_PROGRESS
+      set('Triggered By', actor.email);
       set('Created At', now.toISOString());
       mtRows.push(row);
     });
@@ -1210,7 +1223,122 @@ async function _getSheetHeaders(ssId, sheetName) {
   } catch (_) { return []; }
 }
 
+// ─── Test Call (single contact, prefixed test_ request ID) ────────────────────
+async function handleTestCall(actor, body) {
+  const agentCode   = String(body.agentCode || '').trim();
+  const calleeName  = String(body.callee_name || body.calleeName || '').trim();
+  const mobileNumber = String(body.mobile_number || body.mobileNumber || '').trim();
+  if (!agentCode)    return { ok: false, error: 'AGENT_CODE_REQUIRED' };
+  if (!calleeName)   return { ok: false, error: 'CALLEE_NAME_REQUIRED' };
+  if (!mobileNumber || mobileNumber.replace(/[^\d]/g, '').length < 10) return { ok: false, error: 'INVALID_MOBILE' };
+
+  const agent = await findAgent(agentCode);
+  if (!agent)               return { ok: false, error: 'AGENT_NOT_FOUND' };
+  if (!agent.active)        return { ok: false, error: 'AGENT_INACTIVE' };
+  if (!agent.spreadsheetId) return { ok: false, error: 'AGENT_NO_SPREADSHEET' };
+
+  const agents   = await getAllAgents();
+  const usersVis = await getAllUsers();
+  if (!agentsVisibleTo(actor, agents, usersVis).find(a => a.agentCode === agentCode)) {
+    return { ok: false, error: 'AGENT_NOT_VISIBLE' };
+  }
+
+  const now    = new Date();
+  const dateTs = now.toISOString().slice(0, 19).replace(/[-:T]/g, '').slice(0, 15);
+  const reqId  = `test_${dateTs}_${actor.email.split('@')[0].replace(/[^a-z0-9]/gi, '').slice(0, 8)}`;
+  const cv     = agent.customVariables || [];
+
+  // Build custom_data from body.custom_data — validate all required custom vars are present
+  const customData = {};
+  const missingVars = [];
+  cv.forEach(k => {
+    const v = body.custom_data?.[k];
+    if (v !== undefined && String(v).trim() !== '') {
+      customData[k] = String(v).trim();
+    } else {
+      missingVars.push(k);
+    }
+  });
+  if (missingVars.length > 0) {
+    return {
+      ok: false,
+      error: 'MISSING_CUSTOM_DATA',
+      message: `This agent requires the following fields: ${missingVars.join(', ')}. Please fill them in before triggering the test call.`,
+      missingFields: missingVars,
+    };
+  }
+
+  const payload = {
+    agent_id: agent.agentId, request_id: reqId,
+    data: [{ callee_name: calleeName, mobile_number: mobileNumber, custom_data: customData }],
+    remove_invalid_rows: true, remove_duplicate_phone_numbers: true, timezone: IST_TZ,
+  };
+
+  const apiRes = await hunarPost('/external/v1/calls/bulk/', payload);
+  if (!apiRes.ok) return { ok: false, error: 'HUNAR_API_ERROR', message: apiRes.error };
+  const calls = Array.isArray(apiRes.data) ? apiRes.data : [];
+  const ssId  = agent.spreadsheetId;
+
+  // Seed Campaign_Tracker (prefixed test_ so it's identifiable, and hidden by _isNcRetryReqId=false but test_ is separate)
+  await appendRows(ssId, AGT.CT, [[reqId, `Test_${actor.email.split('@')[0].slice(0, 8)}_${dateTs}`, actor.email, now.toISOString(), 1, 'IN_PROGRESS', 0, 0, 0, 0, 0, 0, Math.round(agent.estSecondsPerCall / 60 * 10) / 10, now.toISOString()]]);
+
+  // Seed Master_Tracker
+  if (calls.length) {
+    const mtH  = await _getSheetHeaders(ssId, AGT.MT);
+    const mtRows = calls.map(c => {
+      const cid = String(c.id || '').trim();
+      if (!cid) return null;
+      const row = new Array(mtH.length).fill('');
+      const set = (n, v) => { const k = mtH.indexOf(n); if (k >= 0) row[k] = v; };
+      set('Call ID', cid); set('Request ID', c.request_id || reqId);
+      set('Callee Name', c.callee_name || calleeName); set('Mobile Number', c.mobile_number || mobileNumber);
+      set('Status', c.status || 'INITIATED'); set('Triggered By', actor.email);
+      set('Created At', now.toISOString());
+      return row;
+    }).filter(Boolean);
+    if (mtRows.length) await appendRows(ssId, AGT.MT, mtRows);
+  }
+
+  // Trigger log (1 contact, 1 call)
+  const estMin = agent.estSecondsPerCall / 60;
+  const users  = await getAllUsers();
+  const actorFull = users.find(u => u.email === actor.email);
+  await appendRows(MAIN_SS_ID, S.TLOG, [[now.toISOString(), actor.email, actorFull?.name || '', actor.team || '', agentCode, reqId, 1, estMin]]);
+  audit(actor.email, 'test_call', `${agentCode}:${reqId}`, `${calleeName}|${mobileNumber}`).catch(() => {});
+
+  registerFreshCampaign(agentCode, reqId);
+  scheduleAgentPoll(agentCode, 2 * 60 * 1000);
+
+  return {
+    ok: true, agentCode, requestId: reqId,
+    callId: calls[0]?.id || '',
+    calleeName, mobileNumber,
+    message: 'Test call triggered successfully.',
+  };
+}
+
 // ─── Leads ─────────────────────────────────────────────────────────────────────
+
+// ── Lead tab constants ────────────────────────────────────────────────────────
+// Priority order: DNP > Callback > Completed > Active
+// DNP-3/4/5 used to fall into "completed" — they now land in "dnp" only.
+const _LEAD_DNP_STATUSES = new Set(['DNP-1','DNP-2','DNP-3','DNP-4','DNP-5']);
+const _LEAD_CB_KEYWORDS  = ['call back','callback','call-back','ring back','follow up','followup','follow-up','reschedule'];
+const _LEAD_COMPLETED_CS = new Set(['Connected','Irrelevant','Hiring On Hold','Hiring On hold']);
+
+function _classifyLeadTab(lead) {
+  const cs = String(lead['Call Status'] || '').trim();
+  const fb = String(lead['Feedback']    || '').trim().toLowerCase();
+  // 1. DNP always wins — never shows in Completed
+  if (_LEAD_DNP_STATUSES.has(cs)) return 'dnp';
+  // 2. Callback Requested or feedback contains callback keywords
+  if (cs === 'Callback Requested' || _LEAD_CB_KEYWORDS.some(kw => fb.includes(kw))) return 'callback';
+  // 3. Explicitly completed statuses
+  if (_LEAD_COMPLETED_CS.has(cs)) return 'completed';
+  // 4. Everything else (blank, in-progress, new) → active
+  return 'active';
+}
+
 async function handleGetLeads(actor, body) {
   const agents = await getAllAgents();
   const users2 = await getAllUsers();
@@ -1259,6 +1387,8 @@ async function handleGetLeads(actor, body) {
     seenIds.add(id);
     return true;
   });
+  // Stamp every lead with its tab classification
+  allLeads.forEach(l => { l._tab = _classifyLeadTab(l); });
   return { ok: true, leads: allLeads, headers, agentCode };
 }
 
@@ -1472,6 +1602,47 @@ async function handleGetNotConnected(actor, body) {
 }
 
 // ─── Campaigns ─────────────────────────────────────────────────────────────────
+function _isNcRetryReqId(reqId) {
+  return String(reqId || '').startsWith('NOTCONNECTED_');
+}
+
+/**
+ * Parse one Campaign_Tracker / Campaign_Tracker_Archive row and push it into
+ * the campaigns array if the actor is allowed to see it.
+ * isArchived=true means the row came from Campaign_Tracker_Archive.
+ */
+function _pushCampaignRow(r, a, campaigns, seenReqIds, actor, visEmails, emailToTeam, isArchived) {
+  if (!r[0]) return;
+  const reqId = String(r[0]).trim();
+  if (_isNcRetryReqId(reqId)) return;    // never show NC auto-retry rows in the UI
+  if (seenReqIds.has(reqId)) return;     // dedupe across live + archive
+  seenReqIds.add(reqId);
+  const by = String(r[2] || '').toLowerCase().trim();
+  if (actor.role === 'recruiter' && by !== actor.email) return;
+  if (actor.role === 'individual_contributor' && by !== actor.email) return;
+  if (actor.role === 'team_lead' && !visEmails.has(by)) return;
+  campaigns.push({
+    agentCode:        a.agentCode,
+    agentName:        a.displayName,
+    requestId:        reqId,
+    campaignName:     String(r[1] || ''),
+    triggeredBy:      by,
+    triggeredByTeam:  emailToTeam[by] || '',
+    triggeredAt:      r[3],
+    contactsCount:    r[4],
+    status:           r[5],
+    completed:        r[6],
+    connected:        r[7],
+    notConnected:     r[8],
+    failed:           r[9],
+    qualified:        r[10],
+    actualMinutes:    Math.round(Number(r[11] || 0) * 100) / 100,
+    estimatedMinutes: r[12],
+    lastUpdated:      r[13],
+    _archived:        isArchived,   // frontend uses this for ACTIVE / ARCHIVED tab
+  });
+}
+
 async function handleGetCampaigns(actor, body) {
   const agents = await getAllAgents();
   const users  = await getAllUsers();
@@ -1479,40 +1650,52 @@ async function handleGetCampaigns(actor, body) {
   const visEmails = new Set(visibleUserEmails(actor, users).map(e => e.toLowerCase()));
   const emailToTeam = {};
   users.forEach(u => { if (u.team) emailToTeam[u.email] = u.team; });
-  const agentCode = String(body.agentCode || '').trim();
-  // Dedupe by ssId — same sheet must not be read twice
-  const rawTargets2 = agentCode ? vis.filter(a => a.agentCode === agentCode) : vis;
-  const targets2    = dedupeAgentsBySsId(rawTargets2);
-  let campaigns = [];
+  const agentCode   = String(body.agentCode || '').trim();
+  // includeArchived: true → also read Campaign_Tracker_Archive (frontend passes this
+  // when the user clicks the "Archived" tab so we don't load archive on every call)
+  const includeArch = body.includeArchived === true;
+
+  const rawTargets = agentCode ? vis.filter(a => a.agentCode === agentCode) : vis;
+  const targets    = dedupeAgentsBySsId(rawTargets);
+  const campaigns  = [];
   const seenReqIds = new Set();
-  for (const a of targets2) {
+
+  for (const a of targets) {
     if (!a.spreadsheetId) continue;
     try {
+      // Live campaigns (always loaded)
       const { rows } = await readSheet(a.spreadsheetId, AGT.CT);
-      rows.forEach(r => {
-        if (!r[0]) return;
-        const reqId = String(r[0]).trim();
-        // Dedupe by requestId — same campaign must not appear twice
-        if (seenReqIds.has(reqId)) return;
-        seenReqIds.add(reqId);
-        const by = String(r[2] || '').toLowerCase().trim();
-        if (actor.role === 'recruiter' && by !== actor.email) return;
-        if (actor.role === 'individual_contributor' && by !== actor.email) return;
-        if (actor.role === 'team_lead' && !visEmails.has(by)) return;
-        campaigns.push({
-          agentCode: a.agentCode, agentName: a.displayName,
-          requestId: reqId, campaignName: String(r[1] || ''),
-          triggeredBy: by, triggeredByTeam: emailToTeam[by] || '',
-          triggeredAt: r[3], contactsCount: r[4], status: r[5],
-          completed: r[6], connected: r[7], notConnected: r[8], failed: r[9],
-          qualified: r[10], actualMinutes: Math.round(Number(r[11] || 0) * 100) / 100,
-          estimatedMinutes: r[12], lastUpdated: r[13],
-        });
-      });
+      rows.forEach(r => _pushCampaignRow(r, a, campaigns, seenReqIds, actor, visEmails, emailToTeam, false));
+
+      // Archived campaigns (only when the frontend explicitly requests them)
+      if (includeArch) {
+        try {
+          const { rows: ar } = await readSheet(a.spreadsheetId, 'Campaign_Tracker_Archive');
+          ar.forEach(r => _pushCampaignRow(r, a, campaigns, seenReqIds, actor, visEmails, emailToTeam, true));
+        } catch (_) {} // archive sheet may not exist yet — skip silently
+      }
     } catch (_) {}
   }
+
   campaigns.sort((a, b) => (a.triggeredAt < b.triggeredAt ? 1 : -1));
   return { ok: true, campaigns };
+}
+
+// ─── Force-complete a campaign (session-authenticated, from frontend) ─────────
+// Only super_admin can call this. Delegates all the real work to the
+// forceCampaignComplete() function in poller.js which fetches every call from
+// Hunar and writes results directly to the agent spreadsheet.
+async function handleForceCampaignComplete(actor, body) {
+  if (actor.role !== 'super_admin') return { ok: false, error: 'FORBIDDEN' };
+  const agentCode = String(body.agentCode || '').trim();
+  const requestId = String(body.requestId || '').trim();
+  if (!agentCode || !requestId) return { ok: false, error: 'agentCode and requestId are required' };
+  try {
+    const result = await forceCampaignComplete(agentCode, requestId);
+    return { ok: true, ...result };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
@@ -1844,14 +2027,16 @@ const mr = [...activeMr, ...archMr];
 async function handleForceRebuildDashboard(actor) {
   if (actor.role !== 'super_admin') return { ok: false, error: 'FORBIDDEN' };
 
-  console.log('[forceRebuild] Starting full dashboard cache rebuild…');
+  console.log('[forceRebuild] Starting full dashboard cache rebuild (all history)…');
   const t0 = Date.now();
 
   const agents = (await getAllAgents()).filter(a => a.active && a.spreadsheetId);
   const users  = await getAllUsers();
-  users.forEach(u => { umap2[u.email.toLowerCase()] = u; }); // populate module-level map
+  const umap   = {};
+  users.forEach(u => { umap[u.email.toLowerCase()] = u; });
+  users.forEach(u => { umap2[u.email.toLowerCase()] = u; }); // also populate module-level map
 
-  // Build trigger maps from Trigger Log
+  // Build trigger maps from Trigger Log (full history — no cutoff)
   const trigMap  = {}; // agentCode|reqId → email
   const trigTeam = {}; // agentCode|reqId → team
   try {
@@ -1867,20 +2052,27 @@ async function handleForceRebuildDashboard(actor) {
     }
   } catch (e) { console.warn('[forceRebuild] Trigger Log read failed:', e.message); }
 
-  const CUTOFF_DAYS = 32;
-  const cutoffStr   = new Date(Date.now() - CUTOFF_DAYS * 86400_000).toLocaleDateString('en-CA', { timeZone: IST_TZ });
+  // No cutoff — scan all historical data
   const agg = {}; // key → { date, team, agent, email, reqId, calls, minutes, qualified, lineup, connected }
 
   const deduped = dedupeAgentsBySsId(agents);
-  console.log(`[forceRebuild] Scanning ${deduped.length} agent spreadsheets…`);
+  console.log(`[forceRebuild] Scanning ${deduped.length} agent spreadsheets (full history)…`);
 
   for (const agent of deduped) {
     try {
-      // ── Master Tracker ──────────────────────────────────────────────────
-      const { headers: mh, rows: mr } = await readSheet(agent.spreadsheetId, AGT.MT);
+      // ── Master Tracker (active + archive) ───────────────────────────────────
+      const { headers: mh, rows: activeMr } = await readSheet(agent.spreadsheetId, AGT.MT);
       if (!mh.length) continue;
+
+      // Also pull archive rows so historical campaigns aren't missing
+      let archMr = [];
+      try {
+        const { rows: ar } = await readSheet(agent.spreadsheetId, 'Master_Tracker_Archive');
+        archMr = ar;
+      } catch (_) {}
+      const mr = [...activeMr, ...archMr];
+
       const si   = mh.indexOf('Status');
-      const cidi = mh.indexOf('Call ID');
       const ri   = mh.indexOf('Request ID');
       const di   = mh.indexOf('Duration (Minutes)');
       const sai  = mh.indexOf('Started At');
@@ -1890,16 +2082,15 @@ async function handleForceRebuildDashboard(actor) {
 
       mr.forEach(row => {
         const status = String(row[si] || '').toUpperCase();
-        if (status !== 'COMPLETED') return; // only completed calls have duration data
+        if (status !== 'COMPLETED') return; // only completed calls contribute to dashboard
         const reqId = ri >= 0 ? String(row[ri] || '').trim() : '';
         const email = trigMap[agent.agentCode + '|' + reqId] || '';
-        const team  = trigTeam[agent.agentCode + '|' + reqId] || umap2[email]?.team || '';
+        const team  = trigTeam[agent.agentCode + '|' + reqId] || umap[email]?.team || '';
 
         const dv = (sai >= 0 ? row[sai] : null) || (cai >= 0 ? row[cai] : null);
         if (!dv) return;
         let d; try { d = new Date(dv); if (isNaN(d.getTime())) return; } catch (_) { return; }
         const dateStr = d.toLocaleDateString('en-CA', { timeZone: IST_TZ });
-        if (dateStr < cutoffStr) return; // skip data older than 32 days
 
         const key = `${dateStr}|${team}|${agent.agentCode}|${email}|${reqId}`;
         if (!agg[key]) agg[key] = { date: dateStr, team, agent: agent.agentCode, email, reqId, calls: 0, minutes: 0, qualified: 0, lineup: 0, connected: 0 };
@@ -1915,9 +2106,11 @@ async function handleForceRebuildDashboard(actor) {
         if (isQualified(agent, result)) agg[key].qualified++;
       });
 
-      // ── Qualified Leads (for lineup count) ─────────────────────────────
+      await sleep(300);
+
+      // ── Qualified Leads (for lineup count) ───────────────────────────────────
       const { headers: qh, rows: qr } = await readSheet(agent.spreadsheetId, AGT.QL);
-      if (!qh.length) continue;
+      if (!qh.length) { console.log(`[forceRebuild] Done: ${agent.agentCode} (no QL)`); continue; }
       const fbi = qh.indexOf('Feedback');
       const qri = qh.indexOf('Request ID');
       const qai = qh.indexOf('Assigned To Email');
@@ -1928,7 +2121,7 @@ async function handleForceRebuildDashboard(actor) {
         if (!_isInterviewLinedUp(fb)) return;
         const reqId   = qri >= 0 ? String(row[qri] || '').trim() : '';
         const email   = qai >= 0 ? String(row[qai] || '').toLowerCase() : (trigMap[agent.agentCode + '|' + reqId] || '');
-        const team    = trigTeam[agent.agentCode + '|' + reqId] || umap2[email]?.team || '';
+        const team    = trigTeam[agent.agentCode + '|' + reqId] || umap[email]?.team || '';
         let dateStr   = '';
         if (qda >= 0 && row[qda]) {
           try { dateStr = new Date(row[qda]).toLocaleDateString('en-CA', { timeZone: IST_TZ }); } catch (_) {}
@@ -1938,31 +2131,32 @@ async function handleForceRebuildDashboard(actor) {
         else          { agg[key] = { date: dateStr, team, agent: agent.agentCode, email, reqId, calls: 0, minutes: 0, qualified: 0, lineup: 1, connected: 0 }; }
       });
 
-      console.log(`[forceRebuild] Done: ${agent.agentCode}`);
+      await sleep(300);
+      console.log(`[forceRebuild] Done: ${agent.agentCode} (mt=${mr.length} ql=${qr.length})`);
     } catch (e) {
       console.warn(`[forceRebuild] Error on ${agent.agentCode}:`, e.message);
     }
   }
 
-  // ── Write to _Dashboard_Cache ──────────────────────────────────────────────
+  // ── Write to _Dashboard_Cache (full replace) ───────────────────────────────
   await ensureSheet(MAIN_SS_ID, DASH_CACHE_SHEET, DASH_CACHE_H, '#1a6fdc');
   await clearRange(MAIN_SS_ID, `'${DASH_CACHE_SHEET}'!A2:Z`);
-  const now = new Date().toISOString();
+  const nowIso = new Date().toISOString();
   const cacheRows = Object.values(agg).map(r => [
     r.date, r.team, r.agent, r.email, r.reqId,
     r.calls, Math.round(r.minutes * 100) / 100,
-    r.qualified, r.lineup, now, r.connected,
+    r.qualified, r.lineup, nowIso, r.connected,
   ]);
   if (cacheRows.length) await appendRows(MAIN_SS_ID, DASH_CACHE_SHEET, cacheRows);
 
   const elapsed = Math.round((Date.now() - t0) / 1000);
-  console.log(`[forceRebuild] Done in ${elapsed}s — ${cacheRows.length} rows written`);
+  console.log(`[forceRebuild] Done in ${elapsed}s — ${cacheRows.length} rows written from ${deduped.length} agents`);
   return {
     ok: true,
     rowsWritten: cacheRows.length,
     agentsScanned: deduped.length,
     elapsed: elapsed + 's',
-    message: `Dashboard cache rebuilt with ${cacheRows.length} rows from ${deduped.length} agents.`,
+    message: `Dashboard cache rebuilt from scratch: ${cacheRows.length} rows from ${deduped.length} agents (full history, no date cutoff).`,
   };
 }
 
@@ -2580,6 +2774,7 @@ async function handleAction(body) {
     case 'repairagentsheets':    return handleRepairAgentSheets(actor);
     case 'uploadcontacts':
     case 'triggercampaign':      return handleUploadContacts(actor, body);
+    case 'forcecompletecampaign': return handleForceCampaignComplete(actor, body);
     case 'getleads':             return handleGetLeads(actor, body);
     case 'updatelead':           return handleUpdateLead(actor, body);
     case 'assignlead':           return handleAssignLead(actor, body);
@@ -2608,6 +2803,7 @@ async function handleAction(body) {
     case 'pollnow':              return actor.role === 'super_admin' ? (pollActiveBatches().catch(() => {}), { ok: true, message: 'Poll triggered.' }) : { ok: false, error: 'FORBIDDEN' };
     case 'backfillnow':          return actor.role === 'super_admin' ? (backfillMissingOutputs().catch(() => {}), { ok: true, message: 'Backfill triggered.' }) : { ok: false, error: 'FORBIDDEN' };
     case 'ncretry':              return handleNcRetry(actor, body);
+    case 'testcall':             return handleTestCall(actor, body);
     case 'forcerebuilddashboard': return handleForceRebuildDashboard(actor);
     case 'killjobs':             return { ok: true, message: 'Use Render dashboard to stop the server.' };
     case 'installtriggers':      return { ok: true, message: 'Node handles all background jobs automatically.' };
@@ -2661,22 +2857,75 @@ app.post('/poller/force-refresh', requirePollerToken, async (req, res) => {
 });
 
 const JOB_MAP = {
-  poll:      () => pollActiveBatches(),
-  backfill:  () => backfillMissingOutputs(),
-  repair:    () => repairUnassignedLeads(),
-  sessions:  () => cleanupExpiredSessions(),
-  dedupe:    () => dedupeAllSheets(),
-  archLeads: () => archiveCompletedLeads(),
-  archMT:    () => archiveCompletedMT(),
-  archManual:() => archiveManualTracker(),
-  callbacks: () => processCallbackQueue(),
-  retries:   () => processRetryQueue(),
+  poll:         () => pollActiveBatches(),
+  backfill:     () => backfillMissingOutputs(),
+  repair:       () => repairUnassignedLeads(),
+  sessions:     () => cleanupExpiredSessions(),
+  dedupe:       () => dedupeAllSheets(),
+  archLeads:    () => archiveCompletedLeads(),
+  archMT:       () => archiveCompletedMT(),
+  archManual:   () => archiveManualTracker(),
+  archCT:       () => archiveCompletedCampaignCT(),
+  callbacks:    () => processCallbackQueue(),
+  retries:      () => processRetryQueue(),
+  sweep27h:     () => checkAndForceComplete27h(),
 };
 app.post('/poller/run/:job', requirePollerToken, async (req, res) => {
   const fn = JOB_MAP[req.params.job];
   if (!fn) return res.status(400).json({ ok: false, error: `Unknown job: ${req.params.job}`, available: Object.keys(JOB_MAP) });
   try { const result = await fn(); res.json({ ok: true, job: req.params.job, result: result || 'done' }); }
   catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+
+// ─── Force-complete a specific campaign ──────────────────────────────────────
+// POST /poller/force-complete
+// Body: { agentCode: string, requestId: string }
+// Auth: requires POLLER_TOKEN in Authorization header
+//
+// Called from the admin Campaign card "Force Complete" button.
+// Fetches every call for the campaign from Hunar, writes results to
+// Master_Tracker, pushes qualified leads, and marks the campaign COMPLETED.
+app.post('/poller/force-complete', requirePollerToken, async (req, res) => {
+  const agentCode = String(req.body?.agentCode || '').trim();
+  const requestId = String(req.body?.requestId || '').trim();
+  if (!agentCode || !requestId) {
+    return res.status(400).json({ ok: false, error: 'agentCode and requestId are required' });
+  }
+  try {
+    const result = await forceCampaignComplete(agentCode, requestId);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ─── Hunar Webhook — call_summary ─────────────────────────────────────────────
+// POST /webhook/hunar/call-summary
+//
+// Hunar fires this once when a call's lifecycle_status reaches a terminal state
+// (COMPLETED / NOT_CONNECTED / FAILED / CANCELLED) — after all retries are done.
+//
+// Why this is better than polling for retried calls:
+//   During retries, per-attempt status=NOT_CONNECTED but lifecycle=IN_PROGRESS.
+//   Polling used to skip NOT_CONNECTED rows as "terminal" — silently missing retry
+//   completions. This webhook fires exactly once at lifecycle end, guaranteed.
+//
+// Security: no signature verification yet (Hunar roadmap) — relies on the
+//   obscurity of the URL. Add WEBHOOK_SECRET check here when Hunar ships it.
+//
+// IMPORTANT: respond 200 immediately, process async.
+// Hunar times out after 30s and retries with exponential backoff (1m→2m→4m→8m).
+app.post('/webhook/hunar/call-summary', async (req, res) => {
+  res.status(200).json({ ok: true }); // respond before any async work
+  const event = req.body;
+  if (!event || event.event_type !== 'call_summary') return;
+  setImmediate(async () => {
+    try {
+      await processWebhookCallSummary(event);
+    } catch (e) {
+      console.error('[webhook] call_summary processing error:', e.message);
+    }
+  });
 });
 
 // ─── Archive endpoints ────────────────────────────────────────────────────────
