@@ -57,7 +57,7 @@ const LINEUP_SS_ID         = process.env.LINEUP_SS_ID || '';
 const SERVICE_EMAIL   = process.env.SERVICE_ACCOUNT_EMAIL || '';
 const GAS_URL         = process.env.GAS_URL; // Only used for email sending (optional)
 const PORTAL_MAIL     = process.env.MAIL_FROM || 'Voxa <noreply@voxa.ai>';
-const DASHBOARD_URL   = process.env.DASHBOARD_URL || 'https://voxatest.vercel.app';
+const DASHBOARD_URL   = process.env.DASHBOARD_URL || 'https://voxa-portal-bfsi.vercel.app';
 
 // ─── Constants matching GAS ───────────────────────────────────────────────────
 const SESSION_TTL_MS       = 12 * 60 * 60 * 1000;
